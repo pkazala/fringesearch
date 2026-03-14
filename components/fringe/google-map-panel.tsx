@@ -67,12 +67,14 @@ export function GoogleMapPanel({
   onSelectEvent,
   onCloseDetails,
 }: GoogleMapPanelProps) {
+  const clientEnvApiKey =
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() || null;
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<unknown>(null);
   const markersRef = useRef<Array<{ setMap: (map: unknown) => void }>>([]);
 
-  const [apiKey, setApiKey] = useState<string | null>(null);
-  const [configLoaded, setConfigLoaded] = useState(false);
+  const [apiKey, setApiKey] = useState<string | null>(clientEnvApiKey);
+  const [configLoaded, setConfigLoaded] = useState(Boolean(clientEnvApiKey));
   const [mapLoadFailed, setMapLoadFailed] = useState(false);
 
   const markerEvents = useMemo(() => {
@@ -82,6 +84,10 @@ export function GoogleMapPanel({
   }, [events, topSuggestions]);
 
   useEffect(() => {
+    if (clientEnvApiKey) {
+      return;
+    }
+
     let cancelled = false;
 
     const loadPublicConfig = async () => {
@@ -89,7 +95,7 @@ export function GoogleMapPanel({
         const response = await fetch("/api/public-config");
         const data = (await response.json()) as { googleMapsApiKey?: string | null };
         if (!cancelled) {
-          setApiKey(data.googleMapsApiKey ?? null);
+          setApiKey(data.googleMapsApiKey?.trim() || null);
         }
       } catch {
         if (!cancelled) {
@@ -107,7 +113,7 @@ export function GoogleMapPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clientEnvApiKey]);
 
   useEffect(() => {
     if (!apiKey) {
@@ -115,6 +121,7 @@ export function GoogleMapPanel({
     }
 
     let cancelled = false;
+    setMapLoadFailed(false);
 
     const initializeMap = async () => {
       try {

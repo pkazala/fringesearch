@@ -63,6 +63,7 @@ export function SearchBar({
           <label className="flex flex-col rounded-2xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
             Preferences
             <input
+              suppressHydrationWarning
               value={value.query}
               onChange={(event) =>
                 onChange({
@@ -78,6 +79,7 @@ export function SearchBar({
           <label className="flex flex-col rounded-2xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
             From
             <input
+              suppressHydrationWarning
               type="date"
               value={value.dateFrom}
               onChange={(event) =>
@@ -93,6 +95,7 @@ export function SearchBar({
           <label className="flex flex-col rounded-2xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
             To
             <input
+              suppressHydrationWarning
               type="date"
               value={value.dateTo}
               onChange={(event) =>
@@ -108,6 +111,7 @@ export function SearchBar({
           <label className="flex flex-col rounded-2xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
             Genre
             <select
+              suppressHydrationWarning
               value={value.genre}
               onChange={(event) =>
                 onChange({
@@ -139,6 +143,7 @@ export function SearchBar({
           <label className="flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5">
             Price under
             <input
+              suppressHydrationWarning
               type="number"
               min={0}
               value={value.priceTo}

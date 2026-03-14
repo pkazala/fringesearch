@@ -127,6 +127,7 @@ export function RulesChatSidebar({ events, filters }: RulesChatSidebarProps) {
         </label>
         <textarea
           id="chat-input"
+          suppressHydrationWarning
           value={input}
           onChange={(event) => setInput(event.target.value)}
           rows={3}
