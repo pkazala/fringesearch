@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { EventList } from "@/components/fringe/event-list";
 import { GoogleMapPanel } from "@/components/fringe/google-map-panel";
@@ -27,57 +26,6 @@ const DEFAULT_FILTERS: DiscoveryFilters = {
   hasSigned: false,
   hasOtherAccessibility: false,
 };
-
-function normalizeFestivalDate(value: string | null, fallback: string) {
-  const nextValue = value?.trim() ?? "";
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextValue)) {
-    return fallback;
-  }
-
-  if (nextValue < FESTIVAL_DATE_FROM) {
-    return FESTIVAL_DATE_FROM;
-  }
-
-  if (nextValue > FESTIVAL_DATE_TO) {
-    return FESTIVAL_DATE_TO;
-  }
-
-  return nextValue;
-}
-
-function readFilterFromQuery(searchParams: URLSearchParams): DiscoveryFilters {
-  const dateFrom = normalizeFestivalDate(searchParams.get("dateFrom"), FESTIVAL_DATE_FROM);
-  const dateTo = normalizeFestivalDate(searchParams.get("dateTo"), FESTIVAL_DATE_TO);
-  const genres = searchParams
-    .getAll("genre")
-    .map((genre) => genre.trim())
-    .filter(Boolean);
-  const [safeDateFrom, safeDateTo] =
-    dateFrom <= dateTo
-      ? [dateFrom, dateTo]
-      : [FESTIVAL_DATE_FROM, FESTIVAL_DATE_TO];
-
-  return {
-    query: searchParams.get("query") ?? "",
-    dateFrom: safeDateFrom,
-    dateTo: safeDateTo,
-    genres,
-    priceTo: searchParams.get("priceTo") ?? "",
-    hasAudioDescription:
-      searchParams.get("hasAudioDescription") === "1" ||
-      searchParams.get("hasAudioDescription") === "true",
-    hasCaptioning:
-      searchParams.get("hasCaptioning") === "1" ||
-      searchParams.get("hasCaptioning") === "true",
-    hasSigned:
-      searchParams.get("hasSigned") === "1" ||
-      searchParams.get("hasSigned") === "true",
-    hasOtherAccessibility:
-      searchParams.get("hasOtherAccessibility") === "1" ||
-      searchParams.get("hasOtherAccessibility") === "true",
-  };
-}
 
 function createQueryString(filters: DiscoveryFilters) {
   const query = new URLSearchParams();
@@ -145,15 +93,6 @@ function mergeGenres(currentGenres: string[], nextGenres: string[], selectedGenr
 }
 
 function HomeContent() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  const initialFilters = useMemo(
-    () => readFilterFromQuery(new URLSearchParams(searchParams.toString())),
-    [searchParams],
-  );
-
   const [draftFilters, setDraftFilters] =
     useState<DiscoveryFilters>(DEFAULT_FILTERS);
   const [activeFilters, setActiveFilters] =
@@ -169,11 +108,6 @@ function HomeContent() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setDraftFilters(initialFilters);
-    setActiveFilters(initialFilters);
-  }, [initialFilters]);
-
-  useEffect(() => {
     const controller = new AbortController();
 
     const loadEvents = async () => {
@@ -181,7 +115,12 @@ function HomeContent() {
       setError(null);
 
       try {
-        const response = await fetch(`/api/events?${createApiQuery(activeFilters)}`, {
+        const response = await fetch("/api/events", {
+          method: "POST",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+          },
+          body: createApiQuery(activeFilters),
           signal: controller.signal,
         });
         const data = (await response.json()) as ScoredEventsResponse & {
@@ -284,11 +223,7 @@ function HomeContent() {
   const applyFilters = useCallback(() => {
     setActiveFilters(draftFilters);
     setSearchCollapsed(true);
-    const queryString = createQueryString(draftFilters);
-    router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
-      scroll: false,
-    });
-  }, [draftFilters, pathname, router]);
+  }, [draftFilters]);
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">

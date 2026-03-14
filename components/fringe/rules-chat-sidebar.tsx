@@ -391,6 +391,7 @@ function EventRecommendationCard({
         <div className="mt-1.5">
           <Button
             type="button"
+            nativeButton={false}
             size="sm"
             variant="outline"
             render={

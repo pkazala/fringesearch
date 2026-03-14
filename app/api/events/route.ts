@@ -103,9 +103,23 @@ function dedupeById<T extends { id: string }>(items: T[]) {
   return [...byId.values()];
 }
 
-export async function GET(request: NextRequest) {
+async function resolveSearchParams(request: NextRequest) {
+  if (request.method === "GET") {
+    return new URLSearchParams(request.nextUrl.searchParams.toString());
+  }
+
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    const rawBody = await request.text();
+    return new URLSearchParams(rawBody);
+  }
+
+  return new URLSearchParams();
+}
+
+async function handleEventsRequest(searchParams: URLSearchParams) {
   try {
-    const key = request.nextUrl.searchParams.toString();
+    const key = searchParams.toString();
     const now = Date.now();
 
     const cached = routeCache.get(key);
@@ -113,7 +127,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(cached.payload);
     }
 
-    const filters = toFilters(request.nextUrl.searchParams);
+    const filters = toFilters(searchParams);
     const rawEvents = await fetchFringeEvents(filters);
 
     const normalized = dedupeById(rawEvents.map(normalizeEvent));
@@ -149,4 +163,14 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  const searchParams = await resolveSearchParams(request);
+  return handleEventsRequest(searchParams);
+}
+
+export async function POST(request: NextRequest) {
+  const searchParams = await resolveSearchParams(request);
+  return handleEventsRequest(searchParams);
 }

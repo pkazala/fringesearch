@@ -116,6 +116,22 @@ function parsePerformanceStats(event: FringeApiEvent) {
   const ends = performances
     .map((performance) => performance.end)
     .filter((end): end is string => Boolean(end));
+  const durations = performances
+    .map((performance) => {
+      if (!performance.start || !performance.end) {
+        return null;
+      }
+
+      const startDate = new Date(performance.start);
+      const endDate = new Date(performance.end);
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        return null;
+      }
+
+      const minutes = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60));
+      return minutes > 0 ? minutes : null;
+    })
+    .filter((duration): duration is number => typeof duration === "number");
 
   const firstPerformanceStart =
     starts.length > 0
@@ -127,12 +143,17 @@ function parsePerformanceStats(event: FringeApiEvent) {
 
   const minPrice = prices.length > 0 ? Math.min(...prices) : null;
   const maxPrice = prices.length > 0 ? Math.max(...prices) : null;
+  const durationMinutes =
+    durations.length > 0
+      ? Math.round(durations.reduce((sum, duration) => sum + duration, 0) / durations.length)
+      : null;
 
   return {
     firstPerformanceStart,
     lastPerformanceEnd,
     minPrice,
     maxPrice,
+    durationMinutes,
     priceLabel:
       prices.length > 0
         ? `£${Math.min(...prices).toFixed(0)}${
@@ -171,6 +192,7 @@ export function normalizeEvent(event: FringeApiEvent): EventSummary {
     priceLabel: performanceStats.priceLabel,
     firstPerformanceStart: performanceStats.firstPerformanceStart,
     lastPerformanceEnd: performanceStats.lastPerformanceEnd,
+    durationMinutes: performanceStats.durationMinutes,
     accessibility: {
       audio: Boolean(event.disabled?.audio),
       captioning: Boolean(event.disabled?.captioning),

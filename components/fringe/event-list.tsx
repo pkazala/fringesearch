@@ -12,6 +12,55 @@ type EventListProps = {
   onSelect: (event: EventSummary) => void;
 };
 
+function formatEventDate(value: string | null) {
+  if (!value) {
+    return "Unknown";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Unknown";
+  }
+
+  return parsed.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function formatEventTime(value: string | null) {
+  if (!value) {
+    return "Unknown";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Unknown";
+  }
+
+  return parsed.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatRuntime(durationMinutes: number | null) {
+  if (typeof durationMinutes !== "number" || durationMinutes <= 0) {
+    return "Unknown";
+  }
+
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+  return `${hours}h ${minutes}m`;
+}
+
 export function EventList({
   events,
   selectedEventId,
@@ -101,7 +150,12 @@ export function EventList({
               </div>
 
               <div className="mt-2 text-[11px] text-zinc-500">
-                From {event.priceLabel} {event.firstPerformanceStart ? "· has schedule" : ""}
+                From {event.priceLabel}
+              </div>
+              <div className="mt-1 grid grid-cols-3 gap-1 text-[11px] text-zinc-500">
+                <span className="truncate">Date: {formatEventDate(event.firstPerformanceStart)}</span>
+                <span className="truncate">Start: {formatEventTime(event.firstPerformanceStart)}</span>
+                <span className="truncate">Run: {formatRuntime(event.durationMinutes)}</span>
               </div>
             </button>
           );

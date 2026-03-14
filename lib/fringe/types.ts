@@ -106,6 +106,7 @@ export type EventSummary = {
   priceLabel: string;
   firstPerformanceStart: string | null;
   lastPerformanceEnd: string | null;
+  durationMinutes: number | null;
   accessibility: {
     audio: boolean;
     captioning: boolean;

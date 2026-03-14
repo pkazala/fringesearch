@@ -38,9 +38,39 @@ function formatDate(value: string | null) {
     weekday: "short",
     day: "2-digit",
     month: "short",
+  });
+}
+
+function formatStartTime(value: string | null) {
+  if (!value) {
+    return "Unknown";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown";
+  }
+
+  return date.toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatRuntime(durationMinutes: number | null) {
+  if (typeof durationMinutes !== "number" || durationMinutes <= 0) {
+    return "Unknown";
+  }
+
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+  return `${hours}h ${minutes}m`;
 }
 
 function getDirectionsUrl(event: EventSummary) {
@@ -116,8 +146,16 @@ export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
 
             <div className="grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
               <p>
-                <span className="font-medium text-foreground">When:</span>{" "}
+                <span className="font-medium text-foreground">Date:</span>{" "}
                 {formatDate(event.firstPerformanceStart)}
+              </p>
+              <p>
+                <span className="font-medium text-foreground">Start:</span>{" "}
+                {formatStartTime(event.firstPerformanceStart)}
+              </p>
+              <p>
+                <span className="font-medium text-foreground">Run time:</span>{" "}
+                {formatRuntime(event.durationMinutes)}
               </p>
               <p>
                 <span className="font-medium text-foreground">Venue:</span> {event.venueAddress}
@@ -147,6 +185,7 @@ export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
           {directionsUrl && (
             <Button
               type="button"
+              nativeButton={false}
               variant="outline"
               render={
                 <a
@@ -162,6 +201,7 @@ export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
           {event.website && (
             <Button
               type="button"
+              nativeButton={false}
               render={
                 <a
                   href={event.website}
