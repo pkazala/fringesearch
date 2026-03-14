@@ -19,4 +19,6 @@ const nextConfig: NextConfig = {
 
 export default nextConfig;
 
-import('@opennextjs/cloudflare').then(m => m.initOpenNextCloudflareForDev());
+if (process.env.NODE_ENV === "development" && process.env.VERCEL !== "1") {
+  void import("@opennextjs/cloudflare").then((module) => module.initOpenNextCloudflareForDev());
+}
