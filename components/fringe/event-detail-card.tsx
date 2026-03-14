@@ -1,5 +1,21 @@
 "use client";
 
+import { useState } from "react";
+
+import { ImageOffIcon, XIcon } from "lucide-react";
+import Image from "next/image";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { getGenreEmoji } from "@/lib/fringe/genre-emoji";
 import type { EventSummary } from "@/lib/fringe/types";
 
@@ -29,81 +45,101 @@ function formatDate(value: string | null) {
 
 export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
   const genreEmoji = getGenreEmoji(event.genre);
+  const primaryImageUrl = event.imageUrls[0] ?? event.imageUrl ?? null;
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = Boolean(primaryImageUrl) && !imageFailed;
 
   return (
-    <aside className="absolute bottom-4 left-4 right-4 z-30 rounded-2xl border border-zinc-200 bg-white/95 p-4 shadow-xl backdrop-blur sm:left-auto sm:max-w-md">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-base font-semibold text-zinc-900">
-            <span className="mr-1.5" aria-hidden="true">
-              {genreEmoji}
-            </span>
-            {event.title}
-          </h3>
-          <p className="text-xs text-zinc-600">
-            {event.genre} · {event.venueName}
-          </p>
+    <Card size="sm" className="h-full w-full max-w-[620px] bg-background/95 shadow-2xl backdrop-blur">
+      <CardHeader className="gap-0.5">
+        <CardTitle>
+          <span className="mr-1.5" aria-hidden="true">
+            {genreEmoji}
+          </span>
+          {event.title}
+        </CardTitle>
+        <CardDescription className="truncate">
+          {event.genre} · {event.venueName}
+        </CardDescription>
+        <CardAction>
+          <Button type="button" variant="outline" size="icon-sm" onClick={onClose} aria-label="Close details">
+            <XIcon />
+          </Button>
+        </CardAction>
+      </CardHeader>
+
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+        <div className="grid gap-2 md:grid-cols-[160px_1fr]">
+          <div className="relative aspect-square overflow-hidden rounded-2xl border border-border bg-muted">
+            {showImage ? (
+              <Image
+                src={primaryImageUrl ?? ""}
+                alt={`${event.title} image`}
+                fill
+                sizes="(max-width: 768px) 90vw, 160px"
+                quality={95}
+                className="object-contain"
+                onError={() => setImageFailed(true)}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                <ImageOffIcon />
+                <span>No image</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">{event.genre}</Badge>
+              <Badge variant="outline">{event.priceLabel}</Badge>
+              <Badge variant="outline">{event.venueName}</Badge>
+            </div>
+
+            <div className="grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
+              <p>
+                <span className="font-medium text-foreground">When:</span>{" "}
+                {formatDate(event.firstPerformanceStart)}
+              </p>
+              <p>
+                <span className="font-medium text-foreground">Venue:</span> {event.venueAddress}
+              </p>
+              <p>
+                <span className="font-medium text-foreground">Postcode:</span> {event.postCode}
+              </p>
+              <p>
+                <span className="font-medium text-foreground">Score:</span> {event.score}
+              </p>
+            </div>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-full border border-zinc-200 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100"
-        >
-          Close
-        </button>
-      </div>
 
-      <div className="mt-3 grid gap-2 text-xs text-zinc-700 sm:grid-cols-2">
-        <p>
-          <span className="font-medium text-zinc-900">When:</span>{" "}
-          {formatDate(event.firstPerformanceStart)}
-        </p>
-        <p>
-          <span className="font-medium text-zinc-900">Price:</span> {event.priceLabel}
-        </p>
-        <p>
-          <span className="font-medium text-zinc-900">Venue:</span> {event.venueAddress}
-        </p>
-        <p>
-          <span className="font-medium text-zinc-900">Postcode:</span> {event.postCode}
-        </p>
-      </div>
+        <p className="text-sm text-muted-foreground">{event.description}</p>
 
-      <p className="mt-3 line-clamp-4 text-xs text-zinc-600">{event.description}</p>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {event.accessibility.audio && (
-          <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] text-emerald-800">
-            Audio description
-          </span>
-        )}
-        {event.accessibility.captioning && (
-          <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] text-emerald-800">
-            Captioning
-          </span>
-        )}
-        {event.accessibility.signed && (
-          <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] text-emerald-800">
-            Signed
-          </span>
-        )}
-        {event.accessibility.otherServices && (
-          <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] text-emerald-800">
-            Other access
-          </span>
-        )}
-      </div>
+        <div className="flex flex-wrap gap-1.5">
+          {event.accessibility.audio && <Badge variant="secondary">Audio description</Badge>}
+          {event.accessibility.captioning && <Badge variant="secondary">Captioning</Badge>}
+          {event.accessibility.signed && <Badge variant="secondary">Signed</Badge>}
+          {event.accessibility.otherServices && <Badge variant="secondary">Other access</Badge>}
+        </div>
+      </CardContent>
 
       {event.website && (
-        <a
-          href={event.website}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-3 inline-flex rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-700"
-        >
-          Open festival listing
-        </a>
+        <CardFooter className="justify-end">
+          <Button
+            type="button"
+            render={
+              <a
+                href={event.website}
+                target="_blank"
+                rel="noreferrer"
+              />
+            }
+          >
+            Open festival listing
+          </Button>
+        </CardFooter>
       )}
-    </aside>
+    </Card>
   );
 }

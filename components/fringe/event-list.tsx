@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+
 import { getGenreEmoji } from "@/lib/fringe/genre-emoji";
 import type { EventSummary } from "@/lib/fringe/types";
 
@@ -16,6 +18,20 @@ export function EventList({
   loading,
   onSelect,
 }: EventListProps) {
+  const eventRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  useEffect(() => {
+    if (!selectedEventId) {
+      return;
+    }
+
+    eventRefs.current[selectedEventId]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, [selectedEventId]);
+
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white">
       <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
@@ -44,6 +60,9 @@ export function EventList({
             <button
               type="button"
               key={event.id}
+              ref={(node) => {
+                eventRefs.current[event.id] = node;
+              }}
               onClick={() => onSelect(event)}
               className={`w-full rounded-2xl border p-3 text-left transition ${
                 selected

@@ -1,20 +1,105 @@
 import type { EventSummary, FringeApiEvent } from "@/lib/fringe/types";
 
+const IMAGE_VERSION_PRIORITY = [
+  "original",
+  "large-1024",
+  "medium-640",
+  "small-320",
+  "thumb-100",
+  "square-150",
+  "square-75",
+] as const;
+const IMAGE_VERSION_SCORES: Record<string, number> = {
+  original: 700,
+  "large-1024": 600,
+  "medium-640": 500,
+  "small-320": 350,
+  "thumb-100": 220,
+  "square-150": 180,
+  "square-75": 120,
+};
+
 function asText(value: string | null | undefined, fallback = "Unknown") {
   const text = value?.trim();
   return text && text.length > 0 ? text : fallback;
 }
 
-function getImageUrl(images: FringeApiEvent["images"]) {
-  if (!images) {
-    return null;
+function toAbsoluteImageUrl(url: string) {
+  if (url.startsWith("//")) {
+    return `https:${url}`;
   }
 
-  const first = Object.values(images).find(
-    (image) => image?.versions?.original?.url,
-  );
+  return url;
+}
 
-  return first?.versions?.original?.url ?? null;
+function getImageUrls(images: FringeApiEvent["images"]) {
+  if (!images) {
+    return [];
+  }
+
+  const scored = Object.values(images)
+    .map((image) => {
+      const versions = image?.versions;
+      if (!versions) {
+        return null;
+      }
+
+      let chosenKey: string | null = null;
+      let chosenUrl: string | null = null;
+      for (const key of IMAGE_VERSION_PRIORITY) {
+        const candidate = versions[key]?.url;
+        if (candidate) {
+          chosenKey = key;
+          chosenUrl = candidate;
+          break;
+        }
+      }
+
+      if (!chosenUrl) {
+        for (const [key, version] of Object.entries(versions)) {
+          if (version?.url) {
+            chosenKey = key;
+            chosenUrl = version.url;
+            break;
+          }
+        }
+      }
+
+      if (!chosenUrl) {
+        return null;
+      }
+
+      const versionScore = IMAGE_VERSION_SCORES[chosenKey ?? ""] ?? 100;
+      const typeScore = image?.type === "hero" ? 80 : 20;
+      const orientationScore =
+        image?.orientation === "landscape"
+          ? 25
+          : image?.orientation === "square"
+            ? 15
+            : 10;
+      const dimensionsScore = Math.min(
+        ((image?.width ?? 0) * (image?.height ?? 0)) / 20_000,
+        120,
+      );
+
+      return {
+        url: toAbsoluteImageUrl(chosenUrl),
+        score: versionScore + typeScore + orientationScore + dimensionsScore,
+      };
+    })
+    .filter((entry): entry is { url: string; score: number } => Boolean(entry))
+    .sort((a, b) => b.score - a.score);
+
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of scored) {
+    if (!seen.has(entry.url)) {
+      seen.add(entry.url);
+      deduped.push(entry.url);
+    }
+  }
+
+  return deduped;
 }
 
 function parsePerformanceStats(event: FringeApiEvent) {
@@ -61,6 +146,7 @@ function parsePerformanceStats(event: FringeApiEvent) {
 
 export function normalizeEvent(event: FringeApiEvent): EventSummary {
   const performanceStats = parsePerformanceStats(event);
+  const imageUrls = getImageUrls(event.images);
 
   return {
     id: event.url,
@@ -75,7 +161,8 @@ export function normalizeEvent(event: FringeApiEvent): EventSummary {
     lon: event.longitude ?? event.venue?.position?.lon ?? null,
     website: event.website,
     status: event.status ?? "active",
-    imageUrl: getImageUrl(event.images),
+    imageUrl: imageUrls[0] ?? null,
+    imageUrls,
     artist: asText(event.artist),
     country: asText(event.country),
     updated: asText(event.updated),

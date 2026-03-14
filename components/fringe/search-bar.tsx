@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { DatePicker } from "@/components/fringe/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -15,8 +14,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { ChevronDownIcon, SearchIcon, SlidersHorizontalIcon } from "lucide-react";
 
@@ -70,6 +67,12 @@ export function SearchBar({
     }
     return `${value.genres.length} selected`;
   }, [value.genres]);
+  const accessibilityLabel = useMemo(() => {
+    if (activeAccessValues.length === 0) {
+      return "Any access";
+    }
+    return `${activeAccessValues.length} selected`;
+  }, [activeAccessValues.length]);
 
   const pillSummary = value.query.trim() ? value.query.trim() : "Search Fringe events";
   const hasCustomDateWindow =
@@ -134,7 +137,7 @@ export function SearchBar({
             : "max-h-[820px] translate-y-0 opacity-100",
         )}
       >
-        <div className="mx-auto w-full max-w-[1500px] rounded-2xl border border-border/80 bg-background p-3 shadow-sm">
+        <div className="mx-auto w-full max-w-[1500px]">
           <form
             className="flex flex-col gap-3"
             onSubmit={(event) => {
@@ -142,9 +145,10 @@ export function SearchBar({
               onApply();
             }}
           >
-            <Card className="border-0 shadow-none">
-              <CardContent className="flex flex-col gap-4 p-0">
-                <div className="grid gap-3 lg:grid-cols-[2fr_1fr_1fr_1.2fr_auto]">
+            <div className="rounded-[24px] border border-zinc-200 bg-card/70 p-1.5 shadow-sm">
+              <div className="grid gap-1 md:items-center lg:grid-cols-[1.6fr_0.9fr_0.9fr_1fr_0.8fr_1.2fr_auto]">
+                <div className="rounded-[18px] px-3 py-2 md:border-r md:border-zinc-200/80">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Where</p>
                   <Input
                     suppressHydrationWarning
                     value={value.query}
@@ -155,8 +159,12 @@ export function SearchBar({
                       })
                     }
                     placeholder="Comedy, family, late-night..."
+                    className="h-7 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:border-0 focus-visible:ring-0"
                   />
+                </div>
 
+                <div className="rounded-[18px] px-3 py-2 md:border-r md:border-zinc-200/80">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">From</p>
                   <DatePicker
                     value={displayedDateFrom}
                     onChange={(next) => {
@@ -166,11 +174,15 @@ export function SearchBar({
                         dateFrom: next || FESTIVAL_DATE_FROM,
                       });
                     }}
-                    placeholder="Choose dates"
+                    placeholder="Choose date"
                     minDate={FESTIVAL_DATE_FROM}
                     maxDate={FESTIVAL_DATE_TO}
+                    className="h-7 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:border-0 focus-visible:ring-0"
                   />
+                </div>
 
+                <div className="rounded-[18px] px-3 py-2 md:border-r md:border-zinc-200/80">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">To</p>
                   <DatePicker
                     value={displayedDateTo}
                     onChange={(next) => {
@@ -180,22 +192,26 @@ export function SearchBar({
                         dateTo: next || FESTIVAL_DATE_TO,
                       });
                     }}
-                    placeholder="Choose dates"
+                    placeholder="Choose date"
                     minDate={FESTIVAL_DATE_FROM}
                     maxDate={FESTIVAL_DATE_TO}
+                    className="h-7 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:border-0 focus-visible:ring-0"
                   />
+                </div>
 
+                <div className="rounded-[18px] px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Genre</p>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
                         <Button
                           type="button"
-                          variant="outline"
-                          className="w-full justify-between gap-2 px-3 font-normal"
+                          variant="ghost"
+                          className="h-7 w-full justify-between gap-2 px-0 text-left font-normal focus-visible:border-0 focus-visible:ring-0"
                         >
                           <span
                             className={cn(
-                              "truncate text-left",
+                              "truncate text-left text-sm",
                               value.genres.length === 0 && "text-muted-foreground",
                             )}
                           >
@@ -212,6 +228,7 @@ export function SearchBar({
                           <DropdownMenuCheckboxItem
                             key={genre}
                             checked={value.genres.includes(genre)}
+                            className="text-foreground data-[checked]:text-foreground"
                             onCheckedChange={(checked) =>
                               onChange({
                                 ...value,
@@ -230,16 +247,10 @@ export function SearchBar({
                       </DropdownMenuGroup>
                     </DropdownMenuContent>
                   </DropdownMenu>
-
-                  <Button type="submit" disabled={loading}>
-                    <SearchIcon data-icon="inline-start" />
-                    {loading ? "Searching..." : "Search"}
-                  </Button>
                 </div>
 
-                <Separator />
-
-                <div className="grid gap-3 lg:grid-cols-[180px_1fr]">
+                <div className="rounded-[18px] px-3 py-2 md:border-l md:border-zinc-200/80">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Price</p>
                   <Input
                     suppressHydrationWarning
                     type="number"
@@ -251,35 +262,76 @@ export function SearchBar({
                         priceTo: event.target.value,
                       })
                     }
-                    placeholder="Max price (£)"
+                    placeholder="Any"
+                    className="h-7 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:border-0 focus-visible:ring-0"
                   />
-
-                  <ToggleGroup
-                    multiple
-                    value={activeAccessValues}
-                    onValueChange={(nextValues) =>
-                      onChange({
-                        ...value,
-                        hasAudioDescription: nextValues.includes("audio"),
-                        hasCaptioning: nextValues.includes("captioning"),
-                        hasSigned: nextValues.includes("signed"),
-                        hasOtherAccessibility: nextValues.includes("other"),
-                      })
-                    }
-                    className="justify-start"
-                  >
-                    {ACCESSIBILITY_KEYS.map((item) => (
-                      <ToggleGroupItem key={item.id} value={item.id} aria-label={item.label}>
-                        {item.label}
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
                 </div>
-              </CardContent>
-            </Card>
+
+                <div className="rounded-[18px] px-3 py-2 md:border-l md:border-zinc-200/80">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Accessibility
+                  </p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-7 w-full justify-between gap-2 px-0 text-left font-normal focus-visible:border-0 focus-visible:ring-0"
+                        >
+                          <span
+                            className={cn(
+                              "truncate text-left text-sm",
+                              activeAccessValues.length === 0 && "text-muted-foreground",
+                            )}
+                          >
+                            {accessibilityLabel}
+                          </span>
+                          <ChevronDownIcon className="size-4 text-muted-foreground" />
+                        </Button>
+                      }
+                    />
+                    <DropdownMenuContent align="start" className="w-[--anchor-width] min-w-64">
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>Accessibility</DropdownMenuLabel>
+                        {ACCESSIBILITY_KEYS.map((item) => (
+                          <DropdownMenuCheckboxItem
+                            key={item.id}
+                            checked={value[item.key]}
+                            className="text-foreground data-[checked]:text-foreground"
+                            onCheckedChange={(checked) =>
+                              onChange({
+                                ...value,
+                                [item.key]: checked === true,
+                              })
+                            }
+                          >
+                            {item.label}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                <div className="flex items-center justify-end px-1 py-1">
+                  <Button
+                    type="submit"
+                    aria-label={loading ? "Searching events" : "Search events"}
+                    disabled={loading}
+                    className="size-10 rounded-full px-0 focus-visible:border-input focus-visible:ring-0"
+                  >
+                    <SearchIcon />
+                  </Button>
+                </div>
+              </div>
+            </div>
           </form>
         </div>
       </div>
     </section>
   );
 }
+
+
+

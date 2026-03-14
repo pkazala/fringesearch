@@ -32,11 +32,14 @@ export type FringeApiEvent = {
     {
       orientation?: "landscape" | "portrait" | "square";
       type?: "thumb" | "hero";
-      versions?: {
-        original?: {
+      width?: number;
+      height?: number;
+      versions?: Record<
+        string,
+        {
           url?: string;
-        };
-      };
+        }
+      >;
     }
   > | null;
   latitude: number | null;
@@ -94,6 +97,7 @@ export type EventSummary = {
   website: string | null;
   status: "active" | "cancelled" | "deleted";
   imageUrl: string | null;
+  imageUrls: string[];
   artist: string;
   country: string;
   updated: string;

@@ -138,6 +138,12 @@ function createApiQuery(filters: DiscoveryFilters) {
   return params.toString();
 }
 
+function mergeGenres(currentGenres: string[], nextGenres: string[], selectedGenres: string[]) {
+  return Array.from(new Set([...currentGenres, ...nextGenres, ...selectedGenres]))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+}
+
 function HomeContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -156,6 +162,7 @@ function HomeContent() {
   const [topSuggestions, setTopSuggestions] = useState<EventSummary[]>([]);
   const [availableGenres, setAvailableGenres] = useState<string[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<EventSummary | null>(null);
+  const [mapVisibleEventIds, setMapVisibleEventIds] = useState<string[] | null>(null);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [searchCollapsed, setSearchCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -187,7 +194,9 @@ function HomeContent() {
 
         setEvents(data.events ?? []);
         setTopSuggestions(data.topSuggestions ?? []);
-        setAvailableGenres(data.availableGenres ?? []);
+        setAvailableGenres((current) =>
+          mergeGenres(current, data.availableGenres ?? [], activeFilters.genres),
+        );
 
         if (data.events?.length) {
           setSelectedEvent((current) => {
@@ -255,6 +264,23 @@ function HomeContent() {
     };
   }, []);
 
+  useEffect(() => {
+    setMapVisibleEventIds(null);
+  }, [events]);
+
+  const visibleSidebarEvents = useMemo(() => {
+    if (!mapVisibleEventIds) {
+      return events;
+    }
+
+    const visibleIds = new Set(mapVisibleEventIds);
+    return events.filter((event) => visibleIds.has(event.id));
+  }, [events, mapVisibleEventIds]);
+
+  const handleVisibleEventsChange = useCallback((visibleEvents: EventSummary[]) => {
+    setMapVisibleEventIds(visibleEvents.map((event) => event.id));
+  }, []);
+
   const applyFilters = useCallback(() => {
     setActiveFilters(draftFilters);
     setSearchCollapsed(true);
@@ -281,14 +307,14 @@ function HomeContent() {
 
       <main
         className={cn(
-          "mx-auto grid w-full max-w-[1500px] gap-4 px-4 py-4 lg:h-[min(62vh,34vw)] lg:min-h-[380px] lg:px-6 motion-safe:transition-[grid-template-columns] motion-safe:duration-180 motion-safe:ease-out motion-reduce:transition-none",
+          "mx-auto grid w-full max-w-[1500px] gap-4 px-4 py-4 lg:h-[82vh] lg:min-h-[82vh] lg:px-6 motion-safe:transition-[grid-template-columns] motion-safe:duration-180 motion-safe:ease-out motion-reduce:transition-none",
           chatCollapsed
             ? "lg:grid-cols-[minmax(320px,320px)_minmax(420px,1fr)_96px]"
             : "lg:grid-cols-[minmax(320px,320px)_minmax(420px,1fr)_360px]",
         )}
       >
         <EventList
-          events={events}
+          events={visibleSidebarEvents}
           selectedEventId={selectedEvent?.id ?? null}
           loading={loading}
           onSelect={setSelectedEvent}
@@ -299,6 +325,7 @@ function HomeContent() {
           topSuggestions={topSuggestions}
           selectedEvent={selectedEvent}
           onSelectEvent={setSelectedEvent}
+          onVisibleEventsChange={handleVisibleEventsChange}
           onCloseDetails={() => setSelectedEvent(null)}
         />
 

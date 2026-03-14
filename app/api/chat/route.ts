@@ -31,6 +31,57 @@ type ChatRecommendation = {
   firstPerformanceStart: string | null;
 };
 
+const CLARIFICATION_REPLY =
+  "I couldn't understand your request yet. Tell me one or two specifics, like genre, budget, dates, or accessibility needs.";
+
+function tokenizePrompt(value: string) {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3);
+}
+
+function hasIntentOverlap(intentTokens: string[], events: EventSummary[]) {
+  if (intentTokens.length === 0 || events.length === 0) {
+    return false;
+  }
+
+  return events.some((event) => {
+    const searchable =
+      `${event.title} ${event.genre} ${event.venueName} ${event.description}`.toLowerCase();
+    return intentTokens.some((token) => searchable.includes(token));
+  });
+}
+
+function hasStructuredPreferenceSignal(prompt: string) {
+  return /(under|below|max|budget|price|cheap|date|dates|from|to|between|weekend|morning|afternoon|evening|night|accessible|caption|signed|audio|genre|comedy|theatre|music|dance|family|kids|children|near)/i.test(
+    prompt,
+  );
+}
+
+function shouldAskForClarification(userPrompt: string, context: ChatContext) {
+  const trimmedPrompt = userPrompt.trim();
+  if (trimmedPrompt.length < 3) {
+    return true;
+  }
+
+  const tokens = tokenizePrompt(trimmedPrompt);
+  if (tokens.length === 0) {
+    return true;
+  }
+
+  const contextEvents = context.events ?? [];
+  if (contextEvents.length === 0) {
+    return false;
+  }
+
+  if (hasIntentOverlap(tokens, contextEvents)) {
+    return false;
+  }
+
+  return !hasStructuredPreferenceSignal(trimmedPrompt);
+}
+
 function readMessageText(message: UIMessage) {
   if (!Array.isArray(message.parts)) {
     return "";
@@ -126,6 +177,20 @@ export async function POST(req: Request) {
   const messages = body.messages ?? [];
   const userPrompt = getLastUserText(messages);
   const context = body.context ?? {};
+  const askForClarification = shouldAskForClarification(userPrompt, context);
+
+  if (askForClarification) {
+    const stream = createUIMessageStream({
+      execute: ({ writer }) => {
+        const id = "rules-assistant";
+        writer.write({ type: "text-start", id });
+        writer.write({ type: "text-delta", id, delta: CLARIFICATION_REPLY });
+        writer.write({ type: "text-end", id });
+      },
+    });
+    return createUIMessageStreamResponse({ stream });
+  }
+
   const recommendations = selectRecommendations(userPrompt, context);
   const eventsForPrompt = (context.events ?? []).map((event) => ({
     id: event.id,
@@ -143,7 +208,7 @@ export async function POST(req: Request) {
   if (!openAiApiKey) {
     const fallbackReply =
       "OPENAI_API_KEY is missing on the server, so I can’t run live AI recommendations right now. Add it to `.env` and try again." +
-      formatRecommendationsBlock(recommendations);
+      (recommendations.length > 0 ? formatRecommendationsBlock(recommendations) : "");
     const stream = createUIMessageStream({
       execute: ({ writer }) => {
         const id = "rules-assistant";
@@ -194,7 +259,7 @@ export async function POST(req: Request) {
       writer.write({
         type: "text-delta",
         id,
-        delta: formatRecommendationsBlock(recommendations),
+        delta: recommendations.length > 0 ? formatRecommendationsBlock(recommendations) : "",
       });
 
       writer.write({ type: "text-end", id });

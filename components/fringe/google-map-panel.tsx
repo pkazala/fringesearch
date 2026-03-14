@@ -11,10 +11,18 @@ declare global {
     google?: {
       maps: {
         Map: new (element: Element, options: Record<string, unknown>) => {
-          addListener?: (eventName: string, callback: () => void) => void;
+          addListener?: (
+            eventName: string,
+            callback: () => void,
+          ) => { remove?: () => void } | void;
           fitBounds?: (bounds: unknown) => void;
           getZoom?: () => number;
           setZoom?: (zoom: number) => void;
+          getBounds?: () => {
+            getNorthEast: () => { lat: () => number; lng: () => number };
+            getSouthWest: () => { lat: () => number; lng: () => number };
+          } | null;
+          panTo?: (point: { lat: number; lng: number }) => void;
         };
         Marker: new (options: Record<string, unknown>) => {
           setMap: (map: unknown) => void;
@@ -64,6 +72,7 @@ type GoogleMapPanelProps = {
   topSuggestions: EventSummary[];
   selectedEvent: EventSummary | null;
   onSelectEvent: (event: EventSummary) => void;
+  onVisibleEventsChange: (visibleEvents: EventSummary[]) => void;
   onCloseDetails: () => void;
 };
 
@@ -100,6 +109,7 @@ export function GoogleMapPanel({
   topSuggestions,
   selectedEvent,
   onSelectEvent,
+  onVisibleEventsChange,
   onCloseDetails,
 }: GoogleMapPanelProps) {
   const clientEnvApiKey =
@@ -242,6 +252,82 @@ export function GoogleMapPanel({
     }
   }, [markerEvents, onSelectEvent]);
 
+  useEffect(() => {
+    if (!mapRef.current) {
+      return;
+    }
+
+    const mapInstance = mapRef.current as {
+      addListener?: (
+        eventName: string,
+        callback: () => void,
+      ) => { remove?: () => void } | void;
+      getBounds?: () => {
+        getNorthEast: () => { lat: () => number; lng: () => number };
+        getSouthWest: () => { lat: () => number; lng: () => number };
+      } | null;
+    };
+
+    const updateVisibleEvents = () => {
+      const bounds = mapInstance.getBounds?.();
+      if (!bounds) {
+        onVisibleEventsChange(markerEvents);
+        return;
+      }
+
+      const north = bounds.getNorthEast().lat();
+      const east = bounds.getNorthEast().lng();
+      const south = bounds.getSouthWest().lat();
+      const west = bounds.getSouthWest().lng();
+      const wrapsDateLine = west > east;
+
+      const visible = markerEvents.filter((event) => {
+        if (typeof event.lat !== "number" || typeof event.lon !== "number") {
+          return false;
+        }
+
+        const withinLat = event.lat >= south && event.lat <= north;
+        const withinLon = wrapsDateLine
+          ? event.lon >= west || event.lon <= east
+          : event.lon >= west && event.lon <= east;
+        return withinLat && withinLon;
+      });
+
+      onVisibleEventsChange(visible);
+    };
+
+    updateVisibleEvents();
+    const listener = mapInstance.addListener?.("idle", updateVisibleEvents);
+
+    return () => {
+      if (listener && typeof listener === "object" && "remove" in listener) {
+        listener.remove?.();
+      }
+    };
+  }, [markerEvents, onVisibleEventsChange]);
+
+  useEffect(() => {
+    if (!selectedEvent || !mapRef.current) {
+      return;
+    }
+
+    if (typeof selectedEvent.lat !== "number" || typeof selectedEvent.lon !== "number") {
+      return;
+    }
+
+    const mapInstance = mapRef.current as {
+      panTo?: (point: { lat: number; lng: number }) => void;
+      getZoom?: () => number;
+      setZoom?: (zoom: number) => void;
+    };
+
+    mapInstance.panTo?.({ lat: selectedEvent.lat, lng: selectedEvent.lon });
+    const currentZoom = mapInstance.getZoom?.();
+    if (typeof currentZoom !== "number" || currentZoom < 14) {
+      mapInstance.setZoom?.(14);
+    }
+  }, [selectedEvent]);
+
   const mapError = !configLoaded
     ? null
     : !apiKey
@@ -265,7 +351,11 @@ export function GoogleMapPanel({
       )}
 
       {selectedEvent && (
-        <EventDetailCard event={selectedEvent} onClose={onCloseDetails} />
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-2 sm:p-3">
+          <div className="pointer-events-auto h-[95%] w-full max-w-[620px]">
+            <EventDetailCard event={selectedEvent} onClose={onCloseDetails} />
+          </div>
+        </div>
       )}
     </section>
   );
