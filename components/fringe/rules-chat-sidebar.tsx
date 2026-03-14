@@ -86,11 +86,38 @@ function compactEvents(events: EventSummary[]) {
     score: event.score,
     scoreReasons: event.scoreReasons,
     description: event.description.slice(0, 280),
+    accessibility: {
+      audio: event.accessibility.audio,
+      captioning: event.accessibility.captioning,
+      signed: event.accessibility.signed,
+      other: event.accessibility.otherServices,
+    },
   }));
 }
 
 function formatPrice(price: number | null) {
   return typeof price === "number" ? `£${price.toFixed(0)}` : "Price unknown";
+}
+
+function getDirectionsUrl(event: EventSummary | undefined) {
+  if (!event) {
+    return null;
+  }
+
+  if (typeof event.lat === "number" && typeof event.lon === "number") {
+    return `https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lon}`;
+  }
+
+  const destination = [event.venueName, event.venueAddress, event.postCode]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(", ");
+
+  if (!destination) {
+    return null;
+  }
+
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
 }
 
 function toIsoDateString(value: string | null | undefined) {
@@ -340,6 +367,7 @@ type EventRecommendationCardProps = {
   genre: string;
   venueName: string;
   minPrice: number | null;
+  directionsUrl?: string | null;
   onClick: () => void;
 };
 
@@ -348,19 +376,36 @@ function EventRecommendationCard({
   genre,
   venueName,
   minPrice,
+  directionsUrl,
   onClick,
 }: EventRecommendationCardProps) {
   return (
-    <button
-      type="button"
-      className="w-full rounded-lg border border-border/70 bg-background/80 px-3 py-2 text-left transition hover:bg-accent/40"
-      onClick={onClick}
-    >
-      <p className="truncate text-xs font-medium">{title}</p>
-      <p className="truncate text-[11px] text-muted-foreground">
-        {genre} · {venueName} · {formatPrice(minPrice)}
-      </p>
-    </button>
+    <div className="w-full rounded-lg border border-border/70 bg-background/80 px-3 py-2">
+      <button type="button" className="w-full text-left transition hover:bg-accent/40" onClick={onClick}>
+        <p className="truncate text-xs font-medium">{title}</p>
+        <p className="truncate text-[11px] text-muted-foreground">
+          {genre} · {venueName} · {formatPrice(minPrice)}
+        </p>
+      </button>
+      {directionsUrl && (
+        <div className="mt-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            render={
+              <a
+                href={directionsUrl}
+                target="_blank"
+                rel="noreferrer"
+              />
+            }
+          >
+            Directions
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -533,7 +578,7 @@ export function RulesChatSidebar({
         <Collapsible open={!collapsed} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <CollapsibleContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {agendaMode && (
-              <div className="shrink-0 border-b px-3 py-3">
+              <div className="shrink-0 overflow-y-auto border-b px-3 py-3 max-h-[42vh]">
                 <p className="text-xs text-muted-foreground">
                   Agenda mode is enabled. I need budget, timing, interests, and intensity before I
                   build your day-by-day plan.
@@ -686,6 +731,7 @@ export function RulesChatSidebar({
                                     genre={event.genre}
                                     venueName={event.venueName}
                                     minPrice={event.minPrice}
+                                    directionsUrl={getDirectionsUrl(event)}
                                     onClick={() => onSelectEvent(event)}
                                   />
                                 ))}
@@ -730,19 +776,24 @@ export function RulesChatSidebar({
                           {parsed.recommendations.length > 0 ? (
                             <div className="mt-1 flex w-full flex-col gap-2">
                               {parsed.recommendations.map((recommendation) => (
+                                (() => {
+                                  const mappedEvent = eventById.get(recommendation.id);
+                                  return (
                                 <EventRecommendationCard
                                   key={`${message.id}-${recommendation.id}`}
                                   title={recommendation.title}
                                   genre={recommendation.genre}
                                   venueName={recommendation.venueName}
                                   minPrice={recommendation.minPrice}
+                                  directionsUrl={getDirectionsUrl(mappedEvent)}
                                   onClick={() => {
-                                    const event = eventById.get(recommendation.id);
-                                    if (event) {
-                                      onSelectEvent(event);
+                                    if (mappedEvent) {
+                                      onSelectEvent(mappedEvent);
                                     }
                                   }}
                                 />
+                                  );
+                                })()
                               ))}
                             </div>
                           ) : null}
@@ -858,6 +909,7 @@ export function RulesChatSidebar({
                             genre={event.genre}
                             venueName={event.venueName}
                             minPrice={event.minPrice}
+                            directionsUrl={getDirectionsUrl(event)}
                             onClick={() => onSelectEvent(event)}
                           />
                         ))}

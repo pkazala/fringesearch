@@ -43,9 +43,27 @@ function formatDate(value: string | null) {
   });
 }
 
+function getDirectionsUrl(event: EventSummary) {
+  if (typeof event.lat === "number" && typeof event.lon === "number") {
+    return `https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lon}`;
+  }
+
+  const destination = [event.venueName, event.venueAddress, event.postCode]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(", ");
+
+  if (!destination) {
+    return null;
+  }
+
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
+}
+
 export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
   const genreEmoji = getGenreEmoji(event.genre);
   const primaryImageUrl = event.imageUrls[0] ?? event.imageUrl ?? null;
+  const directionsUrl = getDirectionsUrl(event);
   const [imageFailed, setImageFailed] = useState(false);
   const showImage = Boolean(primaryImageUrl) && !imageFailed;
 
@@ -124,20 +142,37 @@ export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
         </div>
       </CardContent>
 
-      {event.website && (
-        <CardFooter className="justify-end">
-          <Button
-            type="button"
-            render={
-              <a
-                href={event.website}
-                target="_blank"
-                rel="noreferrer"
-              />
-            }
-          >
-            Open festival listing
-          </Button>
+      {(directionsUrl || event.website) && (
+        <CardFooter className="justify-end gap-2">
+          {directionsUrl && (
+            <Button
+              type="button"
+              variant="outline"
+              render={
+                <a
+                  href={directionsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                />
+              }
+            >
+              Directions
+            </Button>
+          )}
+          {event.website && (
+            <Button
+              type="button"
+              render={
+                <a
+                  href={event.website}
+                  target="_blank"
+                  rel="noreferrer"
+                />
+              }
+            >
+              Open festival listing
+            </Button>
+          )}
         </CardFooter>
       )}
     </Card>

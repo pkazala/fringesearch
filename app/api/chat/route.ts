@@ -1,18 +1,36 @@
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
+  jsonSchema,
+  stepCountIs,
   streamText,
+  tool,
   type UIMessage,
 } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 
-import { filterByIntent } from "@/lib/fringe/ranking";
-import type { EventSummary } from "@/lib/fringe/types";
-
 export const maxDuration = 30;
 
+type ChatEvent = {
+  id: string;
+  title: string;
+  genre: string;
+  venueName: string;
+  minPrice: number | null;
+  firstPerformanceStart: string | null;
+  score?: number;
+  scoreReasons?: string[];
+  description?: string;
+  accessibility?: {
+    audio?: boolean;
+    captioning?: boolean;
+    signed?: boolean;
+    other?: boolean;
+  };
+};
+
 type ChatContext = {
-  events?: EventSummary[];
+  events?: ChatEvent[];
   preferences?: {
     dateFrom?: string;
     dateTo?: string;
@@ -31,56 +49,20 @@ type ChatRecommendation = {
   firstPerformanceStart: string | null;
 };
 
-const CLARIFICATION_REPLY =
-  "I couldn't understand your request yet. Tell me one or two specifics, like genre, budget, dates, or accessibility needs.";
+type SearchEventsInput = {
+  query?: string;
+  genres?: string[];
+  maxPrice?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  accessibility?: Array<"audio" | "captioning" | "signed" | "other">;
+  limit?: number;
+};
 
-function tokenizePrompt(value: string) {
-  return value
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((token) => token.length >= 3);
-}
-
-function hasIntentOverlap(intentTokens: string[], events: EventSummary[]) {
-  if (intentTokens.length === 0 || events.length === 0) {
-    return false;
-  }
-
-  return events.some((event) => {
-    const searchable =
-      `${event.title} ${event.genre} ${event.venueName} ${event.description}`.toLowerCase();
-    return intentTokens.some((token) => searchable.includes(token));
-  });
-}
-
-function hasStructuredPreferenceSignal(prompt: string) {
-  return /(under|below|max|budget|price|cheap|date|dates|from|to|between|weekend|morning|afternoon|evening|night|accessible|caption|signed|audio|genre|comedy|theatre|music|dance|family|kids|children|near)/i.test(
-    prompt,
-  );
-}
-
-function shouldAskForClarification(userPrompt: string, context: ChatContext) {
-  const trimmedPrompt = userPrompt.trim();
-  if (trimmedPrompt.length < 3) {
-    return true;
-  }
-
-  const tokens = tokenizePrompt(trimmedPrompt);
-  if (tokens.length === 0) {
-    return true;
-  }
-
-  const contextEvents = context.events ?? [];
-  if (contextEvents.length === 0) {
-    return false;
-  }
-
-  if (hasIntentOverlap(tokens, contextEvents)) {
-    return false;
-  }
-
-  return !hasStructuredPreferenceSignal(trimmedPrompt);
-}
+type SummarizeMatchesInput = {
+  eventIds?: string[];
+  limit?: number;
+};
 
 function readMessageText(message: UIMessage) {
   if (!Array.isArray(message.parts)) {
@@ -99,47 +81,67 @@ function readMessageText(message: UIMessage) {
     .trim();
 }
 
-function getLastUserText(messages: UIMessage[]) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message.role === "user") {
-      return readMessageText(message);
-    }
-  }
-
-  return "";
-}
-
-function selectRecommendations(userPrompt: string, context: ChatContext) {
-  const events = context.events ?? [];
-  const topMatches = filterByIntent(events, userPrompt).slice(0, 6);
-
-  const budgetMatch = userPrompt.match(/(under|below|max)\s*£?\s*(\d{1,3})/i);
-  const inferredBudget = budgetMatch ? Number(budgetMatch[2]) : null;
-
-  const withinBudget =
-    inferredBudget === null
-      ? topMatches
-      : topMatches.filter(
-          (event) => event.minPrice === null || event.minPrice <= inferredBudget,
-        );
-
-  const finalMatches = withinBudget.length > 0 ? withinBudget : topMatches;
-  return finalMatches.map((event) => ({
+function toChatRecommendation(event: ChatEvent): ChatRecommendation {
+  return {
     id: event.id,
     title: event.title,
     genre: event.genre,
     venueName: event.venueName,
     minPrice: event.minPrice,
     firstPerformanceStart: event.firstPerformanceStart,
-  }));
+  };
 }
 
 function formatRecommendationsBlock(recommendations: ChatRecommendation[]) {
   return `\n\n\`\`\`recs\n${JSON.stringify(recommendations, null, 2)}\n\`\`\``;
 }
 
-function buildSystemPrompt(context: ChatContext, recommendations: ChatRecommendation[]) {
+function normalizeIsoDate(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+function tokenize(value: string) {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 2);
+}
+
+function createEventCatalog(events: ChatEvent[]) {
+  return events.slice(0, 120).map((event) => ({
+    id: event.id,
+    title: event.title,
+    genre: event.genre,
+    venueName: event.venueName,
+    minPrice: event.minPrice,
+    firstPerformanceStart: event.firstPerformanceStart,
+    score: event.score ?? 0,
+    scoreReasons: Array.isArray(event.scoreReasons) ? event.scoreReasons.slice(0, 2) : [],
+    description: (event.description ?? "").slice(0, 180),
+    accessibility: {
+      audio: Boolean(event.accessibility?.audio),
+      captioning: Boolean(event.accessibility?.captioning),
+      signed: Boolean(event.accessibility?.signed),
+      other: Boolean(event.accessibility?.other),
+    },
+  }));
+}
+
+function buildPreferencesSummary(context: ChatContext) {
   const preferenceBits: string[] = [];
 
   if (context.preferences?.dateFrom && context.preferences?.dateTo) {
@@ -155,16 +157,23 @@ function buildSystemPrompt(context: ChatContext, recommendations: ChatRecommenda
     preferenceBits.push(`accessibility ${context.preferences.accessibility.join(", ")}`);
   }
 
+  return preferenceBits.length > 0
+    ? `Current active filters: ${preferenceBits.join("; ")}.`
+    : "No active filters are currently set.";
+}
+
+function buildAgentSystemPrompt(context: ChatContext) {
   return [
-    "You are the fringesearch assistant for Edinburgh Fringe 2025.",
-    "Be concise and practical. Keep your response to 3-6 short bullet points.",
-    "Use only the supplied event context. Do not invent events.",
-    "Mention why each suggestion matches the user intent.",
-    "Do not include JSON in your natural-language response.",
-    preferenceBits.length > 0 ? `Current active filters: ${preferenceBits.join("; ")}.` : "No active filters are currently set.",
-    recommendations.length > 0
-      ? `You already have ${recommendations.length} preselected recommendations with exact IDs to reference in your summary.`
-      : "No strong recommendations were found; ask one concise follow-up preference question.",
+    "You are the fringesearch autonomous agent for Edinburgh Fringe 2025.",
+    "You must decide whether to ask a concise follow-up question or recommend events now.",
+    "Use tools when forming recommendations:",
+    "- Use search_events to retrieve relevant candidates from catalog data.",
+    "- Use summarize_matches to lock in final recommendation IDs for UI cards.",
+    "If user intent is unclear or missing key constraints, ask exactly one focused follow-up question and do not call summarize_matches.",
+    "When enough context exists, call search_events then summarize_matches, then respond with 3-6 concise bullet points.",
+    "Never invent events or IDs. IDs must come from tool results.",
+    "Do not output JSON in the natural-language response.",
+    buildPreferencesSummary(context),
   ].join("\n");
 }
 
@@ -175,40 +184,14 @@ export async function POST(req: Request) {
   };
 
   const messages = body.messages ?? [];
-  const userPrompt = getLastUserText(messages);
   const context = body.context ?? {};
-  const askForClarification = shouldAskForClarification(userPrompt, context);
-
-  if (askForClarification) {
-    const stream = createUIMessageStream({
-      execute: ({ writer }) => {
-        const id = "rules-assistant";
-        writer.write({ type: "text-start", id });
-        writer.write({ type: "text-delta", id, delta: CLARIFICATION_REPLY });
-        writer.write({ type: "text-end", id });
-      },
-    });
-    return createUIMessageStreamResponse({ stream });
-  }
-
-  const recommendations = selectRecommendations(userPrompt, context);
-  const eventsForPrompt = (context.events ?? []).map((event) => ({
-    id: event.id,
-    title: event.title,
-    genre: event.genre,
-    venueName: event.venueName,
-    minPrice: event.minPrice,
-    firstPerformanceStart: event.firstPerformanceStart,
-    score: event.score,
-    scoreReasons: event.scoreReasons.slice(0, 2),
-    description: event.description.slice(0, 220),
-  }));
+  const contextEvents = context.events ?? [];
+  const eventsById = new Map(contextEvents.map((event) => [event.id, event]));
   const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
 
   if (!openAiApiKey) {
     const fallbackReply =
-      "OPENAI_API_KEY is missing on the server, so I can’t run live AI recommendations right now. Add it to `.env` and try again." +
-      (recommendations.length > 0 ? formatRecommendationsBlock(recommendations) : "");
+      "OPENAI_API_KEY is missing on the server, so I can’t run live AI recommendations right now. Add it to `.env` and try again.";
     const stream = createUIMessageStream({
       execute: ({ writer }) => {
         const id = "rules-assistant";
@@ -224,18 +207,182 @@ export async function POST(req: Request) {
     apiKey: openAiApiKey,
   });
 
+  const catalog = createEventCatalog(contextEvents);
+  let latestSearchResults: ChatRecommendation[] = [];
+  let selectedRecommendations: ChatRecommendation[] = [];
+
   const result = streamText({
     model: openai("gpt-4o-mini"),
-    temperature: 0.3,
-    maxOutputTokens: 450,
+    temperature: 0.35,
+    maxOutputTokens: 550,
+    stopWhen: stepCountIs(6),
+    tools: {
+      search_events: tool({
+        description:
+          "Searches event catalog with optional filters and returns ranked candidate matches.",
+        inputSchema: jsonSchema<SearchEventsInput>({
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            genres: { type: "array", items: { type: "string" } },
+            maxPrice: { type: "number" },
+            dateFrom: { type: "string" },
+            dateTo: { type: "string" },
+            accessibility: {
+              type: "array",
+              items: {
+                type: "string",
+                enum: ["audio", "captioning", "signed", "other"],
+              },
+            },
+            limit: { type: "number" },
+          },
+          additionalProperties: false,
+        }),
+        execute: async (input: SearchEventsInput) => {
+          const query = typeof input.query === "string" ? input.query.trim() : "";
+          const queryTokens = tokenize(query);
+          const genreSet = new Set(
+            Array.isArray(input.genres)
+              ? input.genres
+                  .filter((entry) => typeof entry === "string")
+                  .map((entry) => entry.toLowerCase())
+              : [],
+          );
+          const maxPrice = typeof input.maxPrice === "number" ? input.maxPrice : null;
+          const dateFrom = normalizeIsoDate(
+            typeof input.dateFrom === "string" ? input.dateFrom : null,
+          );
+          const dateTo = normalizeIsoDate(typeof input.dateTo === "string" ? input.dateTo : null);
+          const accessibilitySet = new Set(
+            Array.isArray(input.accessibility)
+              ? input.accessibility.filter(
+                  (entry) =>
+                    entry === "audio" ||
+                    entry === "captioning" ||
+                    entry === "signed" ||
+                    entry === "other",
+                )
+              : [],
+          );
+          const limit = Math.min(
+            Math.max(typeof input.limit === "number" ? Math.floor(input.limit) : 8, 3),
+            20,
+          );
+
+          const scored = contextEvents
+            .filter((event) => {
+              if (genreSet.size > 0 && !genreSet.has(event.genre.toLowerCase())) {
+                return false;
+              }
+              if (maxPrice !== null && event.minPrice !== null && event.minPrice > maxPrice) {
+                return false;
+              }
+              if (accessibilitySet.has("audio") && !event.accessibility?.audio) {
+                return false;
+              }
+              if (accessibilitySet.has("captioning") && !event.accessibility?.captioning) {
+                return false;
+              }
+              if (accessibilitySet.has("signed") && !event.accessibility?.signed) {
+                return false;
+              }
+              if (accessibilitySet.has("other") && !event.accessibility?.other) {
+                return false;
+              }
+
+              const eventDate = normalizeIsoDate(event.firstPerformanceStart);
+              if (dateFrom && eventDate && eventDate < dateFrom) {
+                return false;
+              }
+              if (dateTo && eventDate && eventDate > dateTo) {
+                return false;
+              }
+              return true;
+            })
+            .map((event) => {
+              const haystack =
+                `${event.title} ${event.genre} ${event.venueName} ${event.description ?? ""}`.toLowerCase();
+              const tokenScore =
+                queryTokens.length === 0
+                  ? 0
+                  : queryTokens.reduce((acc, token) => acc + (haystack.includes(token) ? 1 : 0), 0);
+              const semanticScore = event.score ?? 0;
+              return {
+                event,
+                score: tokenScore * 8 + semanticScore,
+              };
+            })
+            .filter((entry) => (queryTokens.length > 0 ? entry.score > 0 : true))
+            .sort((a, b) => b.score - a.score);
+
+          const matches = scored.slice(0, limit).map((entry) => toChatRecommendation(entry.event));
+          latestSearchResults = matches;
+
+          return {
+            totalMatches: scored.length,
+            matches,
+          };
+        },
+      }),
+      summarize_matches: tool({
+        description:
+          "Finalizes recommendation IDs for UI cards. Prefer calling this after search_events.",
+        inputSchema: jsonSchema<SummarizeMatchesInput>({
+          type: "object",
+          properties: {
+            eventIds: {
+              type: "array",
+              items: { type: "string" },
+            },
+            limit: { type: "number" },
+          },
+          additionalProperties: false,
+        }),
+        execute: async (input: SummarizeMatchesInput) => {
+          const limit = Math.min(
+            Math.max(typeof input.limit === "number" ? Math.floor(input.limit) : 6, 3),
+            6,
+          );
+          const idsFromInput = Array.isArray(input.eventIds)
+            ? input.eventIds.filter((id) => typeof id === "string")
+            : [];
+
+          const chosenEvents =
+            idsFromInput.length > 0
+              ? idsFromInput
+                  .map((id) => eventsById.get(id))
+                  .filter((event): event is ChatEvent => Boolean(event))
+              : latestSearchResults
+                  .map((entry) => eventsById.get(entry.id))
+                  .filter((event): event is ChatEvent => Boolean(event));
+
+          const deduped: ChatEvent[] = [];
+          const seen = new Set<string>();
+          for (const event of chosenEvents) {
+            if (!seen.has(event.id)) {
+              seen.add(event.id);
+              deduped.push(event);
+            }
+          }
+
+          selectedRecommendations = deduped.slice(0, limit).map(toChatRecommendation);
+
+          return {
+            count: selectedRecommendations.length,
+            recommendations: selectedRecommendations,
+          };
+        },
+      }),
+    },
     messages: [
       {
         role: "system",
-        content: buildSystemPrompt(context, recommendations),
+        content: buildAgentSystemPrompt(context),
       },
       {
         role: "system",
-        content: `Current events context (JSON):\n${JSON.stringify(eventsForPrompt)}`,
+        content: `Event catalog for tool context (JSON):\n${JSON.stringify(catalog)}`,
       },
       ...messages.map((message) => ({
         role: message.role,
@@ -259,7 +406,10 @@ export async function POST(req: Request) {
       writer.write({
         type: "text-delta",
         id,
-        delta: recommendations.length > 0 ? formatRecommendationsBlock(recommendations) : "",
+        delta:
+          selectedRecommendations.length > 0
+            ? formatRecommendationsBlock(selectedRecommendations)
+            : "",
       });
 
       writer.write({ type: "text-end", id });
