@@ -1,5 +1,22 @@
 "use client";
 
+import { DatePicker } from "@/components/fringe/date-picker";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { SearchIcon } from "lucide-react";
+
 export type DiscoveryFilters = {
   query: string;
   dateFrom: string;
@@ -20,19 +37,12 @@ type SearchBarProps = {
   onApply: () => void;
 };
 
-function toggle(
-  current: DiscoveryFilters,
-  key:
-    | "hasAudioDescription"
-    | "hasCaptioning"
-    | "hasSigned"
-    | "hasOtherAccessibility",
-) {
-  return {
-    ...current,
-    [key]: !current[key],
-  };
-}
+const ACCESSIBILITY_KEYS = [
+  { id: "audio", label: "Audio", key: "hasAudioDescription" as const },
+  { id: "captioning", label: "Captioning", key: "hasCaptioning" as const },
+  { id: "signed", label: "Signed", key: "hasSigned" as const },
+  { id: "other", label: "Other Access", key: "hasOtherAccessibility" as const },
+];
 
 export function SearchBar({
   value,
@@ -41,14 +51,18 @@ export function SearchBar({
   onChange,
   onApply,
 }: SearchBarProps) {
+  const activeAccessValues = ACCESSIBILITY_KEYS.filter((item) => value[item.key]).map(
+    (item) => item.id,
+  );
+
   return (
-    <section className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 px-4 py-4 backdrop-blur md:px-6">
-      <div className="mx-auto flex w-full max-w-[1500px] items-center justify-between pb-3">
+    <section className="sticky top-0 z-20 border-b bg-background/95 px-4 py-4 backdrop-blur md:px-6">
+      <div className="mx-auto flex w-full max-w-[1500px] items-center justify-between gap-3 pb-3">
         <div className="flex items-center gap-2">
-          <span className="rounded-full bg-zinc-900 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
+          <Badge variant="secondary" className="uppercase tracking-wide">
             fringesearch
-          </span>
-          <span className="text-xs text-zinc-500">Edinburgh Fringe 2025</span>
+          </Badge>
+          <span className="text-xs text-muted-foreground">Edinburgh Fringe 2025</span>
         </div>
       </div>
 
@@ -59,152 +73,113 @@ export function SearchBar({
           onApply();
         }}
       >
-        <div className="grid gap-3 rounded-3xl border border-zinc-200 bg-white p-3 shadow-sm lg:grid-cols-[2fr_1fr_1fr_1fr_auto]">
-          <label className="flex flex-col rounded-2xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
-            Preferences
-            <input
-              suppressHydrationWarning
-              value={value.query}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  query: event.target.value,
-                })
-              }
-              placeholder="Comedy, family, late-night..."
-              className="mt-1 bg-transparent text-sm font-medium text-zinc-900 outline-none"
-            />
-          </label>
+        <Card>
+          <CardContent className="flex flex-col gap-4">
+            <div className="grid gap-3 lg:grid-cols-[2fr_1fr_1fr_1fr_auto]">
+              <Input
+                suppressHydrationWarning
+                value={value.query}
+                onChange={(event) =>
+                  onChange({
+                    ...value,
+                    query: event.target.value,
+                  })
+                }
+                placeholder="Comedy, family, late-night..."
+              />
 
-          <label className="flex flex-col rounded-2xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
-            From
-            <input
-              suppressHydrationWarning
-              type="date"
-              value={value.dateFrom}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  dateFrom: event.target.value,
-                })
-              }
-              className="mt-1 bg-transparent text-sm font-medium text-zinc-900 outline-none"
-            />
-          </label>
+              <DatePicker
+                value={value.dateFrom}
+                onChange={(next) =>
+                  onChange({
+                    ...value,
+                    dateFrom: next,
+                  })
+                }
+                placeholder="From date"
+              />
 
-          <label className="flex flex-col rounded-2xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
-            To
-            <input
-              suppressHydrationWarning
-              type="date"
-              value={value.dateTo}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  dateTo: event.target.value,
-                })
-              }
-              className="mt-1 bg-transparent text-sm font-medium text-zinc-900 outline-none"
-            />
-          </label>
+              <DatePicker
+                value={value.dateTo}
+                onChange={(next) =>
+                  onChange({
+                    ...value,
+                    dateTo: next,
+                  })
+                }
+                placeholder="To date"
+              />
 
-          <label className="flex flex-col rounded-2xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
-            Genre
-            <select
-              suppressHydrationWarning
-              value={value.genre}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  genre: event.target.value,
-                })
-              }
-              className="mt-1 bg-transparent text-sm font-medium text-zinc-900 outline-none"
-            >
-              <option value="">No preference</option>
-              {availableGenres.map((genre) => (
-                <option key={genre} value={genre}>
-                  {genre}
-                </option>
-              ))}
-            </select>
-          </label>
+              <Select
+                value={value.genre || "__none"}
+                onValueChange={(nextValue) =>
+                  onChange({
+                    ...value,
+                    genre: nextValue && nextValue !== "__none" ? nextValue : "",
+                  })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="No preference" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="__none">No preference</SelectItem>
+                    {availableGenres.map((genre) => (
+                      <SelectItem key={genre} value={genre}>
+                        {genre}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
 
-          <button
-            type="submit"
-            className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-70"
-            disabled={loading}
-          >
-            {loading ? "Searching..." : "Search"}
-          </button>
-        </div>
+              <Button type="submit" disabled={loading}>
+                <SearchIcon data-icon="inline-start" />
+                {loading ? "Searching..." : "Search"}
+              </Button>
+            </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-700">
-          <label className="flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5">
-            Price under
-            <input
-              suppressHydrationWarning
-              type="number"
-              min={0}
-              value={value.priceTo}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  priceTo: event.target.value,
-                })
-              }
-              className="w-16 bg-transparent text-sm font-medium text-zinc-900 outline-none"
-            />
-          </label>
+            <Separator />
 
-          <button
-            type="button"
-            onClick={() => onChange(toggle(value, "hasAudioDescription"))}
-            className={`rounded-full border px-3 py-1.5 transition ${
-              value.hasAudioDescription
-                ? "border-emerald-600 bg-emerald-50 text-emerald-800"
-                : "border-zinc-200 bg-white text-zinc-700"
-            }`}
-          >
-            Audio description
-          </button>
+            <div className="grid gap-3 lg:grid-cols-[180px_1fr]">
+              <Input
+                suppressHydrationWarning
+                type="number"
+                min={0}
+                value={value.priceTo}
+                onChange={(event) =>
+                  onChange({
+                    ...value,
+                    priceTo: event.target.value,
+                  })
+                }
+                placeholder="Max price (£)"
+              />
 
-          <button
-            type="button"
-            onClick={() => onChange(toggle(value, "hasCaptioning"))}
-            className={`rounded-full border px-3 py-1.5 transition ${
-              value.hasCaptioning
-                ? "border-emerald-600 bg-emerald-50 text-emerald-800"
-                : "border-zinc-200 bg-white text-zinc-700"
-            }`}
-          >
-            Captioning
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onChange(toggle(value, "hasSigned"))}
-            className={`rounded-full border px-3 py-1.5 transition ${
-              value.hasSigned
-                ? "border-emerald-600 bg-emerald-50 text-emerald-800"
-                : "border-zinc-200 bg-white text-zinc-700"
-            }`}
-          >
-            Signed
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onChange(toggle(value, "hasOtherAccessibility"))}
-            className={`rounded-full border px-3 py-1.5 transition ${
-              value.hasOtherAccessibility
-                ? "border-emerald-600 bg-emerald-50 text-emerald-800"
-                : "border-zinc-200 bg-white text-zinc-700"
-            }`}
-          >
-            Other access
-          </button>
-        </div>
+              <ToggleGroup
+                multiple
+                value={activeAccessValues}
+                onValueChange={(nextValues) =>
+                  onChange({
+                    ...value,
+                    hasAudioDescription: nextValues.includes("audio"),
+                    hasCaptioning: nextValues.includes("captioning"),
+                    hasSigned: nextValues.includes("signed"),
+                    hasOtherAccessibility: nextValues.includes("other"),
+                  })
+                }
+                className="justify-start"
+              >
+                {ACCESSIBILITY_KEYS.map((item) => (
+                  <ToggleGroupItem key={item.id} value={item.id} aria-label={item.label}>
+                    {item.label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+          </CardContent>
+        </Card>
       </form>
     </section>
   );

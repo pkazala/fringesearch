@@ -4,6 +4,23 @@ import { useMemo, useState } from "react";
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import { ChevronLeftIcon, ChevronRightIcon, MessageSquareIcon } from "lucide-react";
 
 import type { DiscoveryFilters } from "@/components/fringe/search-bar";
 import type { EventSummary } from "@/lib/fringe/types";
@@ -11,6 +28,8 @@ import type { EventSummary } from "@/lib/fringe/types";
 type RulesChatSidebarProps = {
   events: EventSummary[];
   filters: DiscoveryFilters;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
 };
 
 function compactEvents(events: EventSummary[]) {
@@ -27,9 +46,13 @@ function compactEvents(events: EventSummary[]) {
   }));
 }
 
-export function RulesChatSidebar({ events, filters }: RulesChatSidebarProps) {
+export function RulesChatSidebar({
+  events,
+  filters,
+  collapsed,
+  onCollapsedChange,
+}: RulesChatSidebarProps) {
   const [input, setInput] = useState("");
-
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
@@ -38,126 +61,137 @@ export function RulesChatSidebar({ events, filters }: RulesChatSidebarProps) {
     [],
   );
 
-  const { messages, sendMessage, status, error, stop } = useChat({
+  const { messages, sendMessage, status, error } = useChat({
     transport,
   });
 
-  const isBusy = status === "submitted" || status === "streaming";
-
   return (
-    <aside className="flex min-h-[420px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white">
-      <header className="border-b border-zinc-200 px-4 py-3">
-        <h2 className="text-sm font-semibold text-zinc-900">Fringe assistant</h2>
-        <p className="mt-1 text-xs text-zinc-600">
-          Rules-based suggestions via AI SDK chat transport.
-        </p>
-      </header>
-
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
-        {messages.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-3 text-xs text-zinc-600">
-            Try: cheap comedy on my dates, or accessible family events near city centre.
-          </div>
-        )}
-
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`max-w-[95%] rounded-2xl px-3 py-2 text-sm ${
-              message.role === "user"
-                ? "ml-auto bg-emerald-600 text-white"
-                : "bg-zinc-100 text-zinc-800"
-            }`}
-          >
-            {message.parts.map((part, index) =>
-              part.type === "text" ? (
-                <p key={`${message.id}-${index}`} className="whitespace-pre-wrap leading-relaxed">
-                  {part.text}
-                </p>
-              ) : null,
+    <Card className="flex min-h-[420px] flex-col">
+      <CardHeader className="border-b">
+        <div className="flex items-center justify-between gap-2">
+          <div className={cn("flex items-center gap-2", collapsed && "justify-center")}>
+            <MessageSquareIcon className="size-4 text-muted-foreground" />
+            {!collapsed && (
+              <div className="flex flex-col gap-0.5">
+                <CardTitle className="text-sm">Fringe assistant</CardTitle>
+                <p className="text-xs text-muted-foreground">Rules chat powered by AI SDK.</p>
+              </div>
             )}
           </div>
-        ))}
-
-        {error && (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-            Something went wrong in chat. Please try again.
-          </div>
-        )}
-      </div>
-
-      <form
-        className="border-t border-zinc-200 p-3"
-        onSubmit={async (event) => {
-          event.preventDefault();
-
-          const text = input.trim();
-          if (!text || isBusy) {
-            return;
-          }
-
-          setInput("");
-
-          await sendMessage(
-            { text },
-            {
-              body: {
-                context: {
-                  events: compactEvents(events),
-                  preferences: {
-                    dateFrom: filters.dateFrom || undefined,
-                    dateTo: filters.dateTo || undefined,
-                    genre: filters.genre || undefined,
-                    priceTo: filters.priceTo ? Number(filters.priceTo) : undefined,
-                    accessibility: [
-                      filters.hasAudioDescription ? "audio" : null,
-                      filters.hasCaptioning ? "captioning" : null,
-                      filters.hasSigned ? "signed" : null,
-                      filters.hasOtherAccessibility ? "other" : null,
-                    ].filter(Boolean),
-                  },
-                },
-              },
-            },
-          );
-        }}
-      >
-        <label className="sr-only" htmlFor="chat-input">
-          Chat input
-        </label>
-        <textarea
-          id="chat-input"
-          suppressHydrationWarning
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          rows={3}
-          placeholder="Tell me what vibe you're after..."
-          className="w-full resize-none rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 outline-none focus:border-zinc-400"
-        />
-        <div className="mt-2 flex items-center justify-between">
-          <span className="text-xs text-zinc-500">
-            {isBusy ? "Thinking..." : "Ready"}
-          </span>
-          <div className="flex gap-2">
-            {isBusy && (
-              <button
-                type="button"
-                onClick={() => stop()}
-                className="rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-100"
-              >
-                Stop
-              </button>
-            )}
-            <button
-              type="submit"
-              className="rounded-full bg-zinc-900 px-3 py-1 text-xs font-semibold text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isBusy || input.trim().length === 0}
-            >
-              Send
-            </button>
-          </div>
+          <Collapsible open={!collapsed} onOpenChange={(open) => onCollapsedChange(!open)}>
+            <CollapsibleTrigger
+              render={
+                <Button type="button" variant="outline" size="icon-sm">
+                  {collapsed ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+                </Button>
+              }
+            />
+          </Collapsible>
         </div>
-      </form>
-    </aside>
+      </CardHeader>
+
+      {collapsed ? (
+        <CardContent className="flex flex-1 items-center justify-center">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => onCollapsedChange(false)}
+          >
+            Open chat
+          </Button>
+        </CardContent>
+      ) : (
+        <Collapsible open={!collapsed}>
+          <CollapsibleContent className="flex flex-1 flex-col">
+            <Conversation className="min-h-0">
+              <ConversationContent className="gap-4 p-3">
+                {messages.length === 0 ? (
+                  <ConversationEmptyState
+                    title="Start chatting"
+                    description="Try: cheap comedy on my dates, or accessible family events near city centre."
+                  />
+                ) : (
+                  messages.map((message) => (
+                    <Message key={message.id} from={message.role}>
+                      <MessageContent>
+                        {message.parts.map((part, index) =>
+                          part.type === "text" ? (
+                            <MessageResponse key={`${message.id}-${index}`}>
+                              {part.text}
+                            </MessageResponse>
+                          ) : null,
+                        )}
+                      </MessageContent>
+                    </Message>
+                  ))
+                )}
+
+                {error && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    Something went wrong in chat. Please try again.
+                  </div>
+                )}
+              </ConversationContent>
+              <ConversationScrollButton />
+            </Conversation>
+
+            <CardContent>
+              <form
+                className="flex flex-col gap-2"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  const trimmed = input.trim();
+                  if (!trimmed) {
+                    return;
+                  }
+
+                  setInput("");
+                  await sendMessage(
+                    { text: trimmed },
+                    {
+                      body: {
+                        context: {
+                          events: compactEvents(events),
+                          preferences: {
+                            dateFrom: filters.dateFrom || undefined,
+                            dateTo: filters.dateTo || undefined,
+                            genre: filters.genre || undefined,
+                            priceTo: filters.priceTo ? Number(filters.priceTo) : undefined,
+                            accessibility: [
+                              filters.hasAudioDescription ? "audio" : null,
+                              filters.hasCaptioning ? "captioning" : null,
+                              filters.hasSigned ? "signed" : null,
+                              filters.hasOtherAccessibility ? "other" : null,
+                            ].filter(Boolean),
+                          },
+                        },
+                      },
+                    },
+                  );
+                }}
+              >
+                <Textarea
+                  suppressHydrationWarning
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  rows={3}
+                  placeholder="Tell me what vibe you're after..."
+                  className="resize-none"
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="px-1 text-xs text-muted-foreground">
+                    {status === "submitted" || status === "streaming" ? "Thinking..." : "Ready"}
+                  </span>
+                  <Button type="submit" size="sm" disabled={!input.trim()}>
+                    Send
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </Card>
   );
 }

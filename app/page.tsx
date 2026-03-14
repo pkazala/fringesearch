@@ -10,6 +10,7 @@ import {
   SearchBar,
   type DiscoveryFilters,
 } from "@/components/fringe/search-bar";
+import { cn } from "@/lib/utils";
 import type { EventSummary, ScoredEventsResponse } from "@/lib/fringe/types";
 
 const DEFAULT_FILTERS: DiscoveryFilters = {
@@ -105,6 +106,7 @@ function HomeContent() {
   const [topSuggestions, setTopSuggestions] = useState<EventSummary[]>([]);
   const [availableGenres, setAvailableGenres] = useState<string[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<EventSummary | null>(null);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -178,7 +180,7 @@ function HomeContent() {
   }, [draftFilters, pathname, router]);
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div className="min-h-screen bg-background">
       <SearchBar
         value={draftFilters}
         availableGenres={availableGenres}
@@ -187,7 +189,14 @@ function HomeContent() {
         onApply={applyFilters}
       />
 
-      <main className="mx-auto grid w-full max-w-[1500px] gap-4 px-4 py-4 lg:grid-cols-[minmax(320px,1fr)_minmax(420px,1.3fr)_360px] lg:px-6">
+      <main
+        className={cn(
+          "mx-auto grid w-full max-w-[1500px] gap-4 px-4 py-4 lg:px-6 motion-safe:transition-[grid-template-columns] motion-safe:duration-300 motion-safe:ease-out motion-reduce:transition-none",
+          chatCollapsed
+            ? "lg:grid-cols-[minmax(320px,320px)_minmax(420px,1fr)_96px]"
+            : "lg:grid-cols-[minmax(320px,320px)_minmax(420px,1fr)_360px]",
+        )}
+      >
         <EventList
           events={events}
           selectedEventId={selectedEvent?.id ?? null}
@@ -203,7 +212,12 @@ function HomeContent() {
           onCloseDetails={() => setSelectedEvent(null)}
         />
 
-        <RulesChatSidebar events={events} filters={activeFilters} />
+        <RulesChatSidebar
+          events={events}
+          filters={activeFilters}
+          collapsed={chatCollapsed}
+          onCollapsedChange={setChatCollapsed}
+        />
       </main>
 
       {error && (
