@@ -9,7 +9,7 @@ export type EventSearchFilters = AccessibilityFilters & {
   query?: string;
   dateFrom?: string;
   dateTo?: string;
-  genre?: string;
+  genres?: string[];
   priceTo?: number;
   lat?: number;
   lon?: number;

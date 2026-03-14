@@ -100,6 +100,9 @@ export function scoreAndFilterEvents(
   const to = toDate(filters.dateTo);
   const queryTokens = tokenize(filters.query ?? "");
   const maxDistanceKm = parseDistanceToKm(filters.distance);
+  const normalizedGenres = (filters.genres ?? [])
+    .map((genre) => genre.trim().toLowerCase())
+    .filter(Boolean);
 
   const scored = events
     .filter((event) => {
@@ -107,10 +110,7 @@ export function scoreAndFilterEvents(
         return false;
       }
 
-      if (
-        filters.genre &&
-        event.genre.toLowerCase() !== filters.genre.trim().toLowerCase()
-      ) {
+      if (normalizedGenres.length > 0 && !normalizedGenres.includes(event.genre.toLowerCase())) {
         return false;
       }
 
@@ -176,9 +176,9 @@ export function scoreAndFilterEvents(
         }
       }
 
-      if (filters.genre && event.genre.toLowerCase() === filters.genre.toLowerCase()) {
+      if (normalizedGenres.length > 0 && normalizedGenres.includes(event.genre.toLowerCase())) {
         score += 20;
-        reasons.push("Genre matches your preference");
+        reasons.push("Category matches your preferences");
       }
 
       if (typeof filters.priceTo === "number") {

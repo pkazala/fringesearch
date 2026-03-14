@@ -13,11 +13,14 @@ import {
 import { cn } from "@/lib/utils";
 import type { EventSummary, ScoredEventsResponse } from "@/lib/fringe/types";
 
+const FESTIVAL_DATE_FROM = "2025-08-01";
+const FESTIVAL_DATE_TO = "2025-08-31";
+
 const DEFAULT_FILTERS: DiscoveryFilters = {
   query: "",
-  dateFrom: "",
-  dateTo: "",
-  genre: "",
+  dateFrom: FESTIVAL_DATE_FROM,
+  dateTo: FESTIVAL_DATE_TO,
+  genres: [],
   priceTo: "",
   hasAudioDescription: false,
   hasCaptioning: false,
@@ -25,12 +28,41 @@ const DEFAULT_FILTERS: DiscoveryFilters = {
   hasOtherAccessibility: false,
 };
 
+function normalizeFestivalDate(value: string | null, fallback: string) {
+  const nextValue = value?.trim() ?? "";
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextValue)) {
+    return fallback;
+  }
+
+  if (nextValue < FESTIVAL_DATE_FROM) {
+    return FESTIVAL_DATE_FROM;
+  }
+
+  if (nextValue > FESTIVAL_DATE_TO) {
+    return FESTIVAL_DATE_TO;
+  }
+
+  return nextValue;
+}
+
 function readFilterFromQuery(searchParams: URLSearchParams): DiscoveryFilters {
+  const dateFrom = normalizeFestivalDate(searchParams.get("dateFrom"), FESTIVAL_DATE_FROM);
+  const dateTo = normalizeFestivalDate(searchParams.get("dateTo"), FESTIVAL_DATE_TO);
+  const genres = searchParams
+    .getAll("genre")
+    .map((genre) => genre.trim())
+    .filter(Boolean);
+  const [safeDateFrom, safeDateTo] =
+    dateFrom <= dateTo
+      ? [dateFrom, dateTo]
+      : [FESTIVAL_DATE_FROM, FESTIVAL_DATE_TO];
+
   return {
     query: searchParams.get("query") ?? "",
-    dateFrom: searchParams.get("dateFrom") ?? "",
-    dateTo: searchParams.get("dateTo") ?? "",
-    genre: searchParams.get("genre") ?? "",
+    dateFrom: safeDateFrom,
+    dateTo: safeDateTo,
+    genres,
     priceTo: searchParams.get("priceTo") ?? "",
     hasAudioDescription:
       searchParams.get("hasAudioDescription") === "1" ||
@@ -59,8 +91,11 @@ function createQueryString(filters: DiscoveryFilters) {
   if (filters.dateTo) {
     query.set("dateTo", filters.dateTo);
   }
-  if (filters.genre) {
-    query.set("genre", filters.genre);
+  for (const genre of filters.genres) {
+    const nextGenre = genre.trim();
+    if (nextGenre) {
+      query.append("genre", nextGenre);
+    }
   }
   if (filters.priceTo) {
     query.set("priceTo", filters.priceTo);
@@ -83,8 +118,23 @@ function createQueryString(filters: DiscoveryFilters) {
 
 function createApiQuery(filters: DiscoveryFilters) {
   const params = new URLSearchParams(createQueryString(filters));
-  params.set("size", "100");
   params.set("from", "0");
+
+  const hasActiveFilters =
+    filters.query.trim().length > 0 ||
+    filters.genres.length > 0 ||
+    filters.priceTo.trim().length > 0 ||
+    filters.hasAudioDescription ||
+    filters.hasCaptioning ||
+    filters.hasSigned ||
+    filters.hasOtherAccessibility ||
+    filters.dateFrom !== FESTIVAL_DATE_FROM ||
+    filters.dateTo !== FESTIVAL_DATE_TO;
+
+  if (hasActiveFilters) {
+    params.set("size", "100");
+  }
+
   return params.toString();
 }
 
@@ -107,6 +157,7 @@ function HomeContent() {
   const [availableGenres, setAvailableGenres] = useState<string[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<EventSummary | null>(null);
   const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [searchCollapsed, setSearchCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -159,6 +210,8 @@ function HomeContent() {
         );
         setEvents([]);
         setTopSuggestions([]);
+        setAvailableGenres([]);
+        setSelectedEvent(null);
       } finally {
         setLoading(false);
       }
@@ -171,8 +224,40 @@ function HomeContent() {
     };
   }, [activeFilters]);
 
+  useEffect(() => {
+    let touchStartY = 0;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY > 4) {
+        setSearchCollapsed(true);
+      }
+    };
+
+    const handleTouchStart = (event: TouchEvent) => {
+      touchStartY = event.touches[0]?.clientY ?? 0;
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const currentY = event.touches[0]?.clientY ?? touchStartY;
+      if (touchStartY - currentY > 6) {
+        setSearchCollapsed(true);
+      }
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: true });
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchmove", handleTouchMove, { passive: true });
+
+    return () => {
+      window.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchmove", handleTouchMove);
+    };
+  }, []);
+
   const applyFilters = useCallback(() => {
     setActiveFilters(draftFilters);
+    setSearchCollapsed(true);
     const queryString = createQueryString(draftFilters);
     router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
       scroll: false,
@@ -180,18 +265,23 @@ function HomeContent() {
   }, [draftFilters, pathname, router]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <SearchBar
         value={draftFilters}
         availableGenres={availableGenres}
         loading={loading}
+        collapsed={searchCollapsed}
+        onExpand={() => {
+          setSearchCollapsed(false);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
         onChange={setDraftFilters}
         onApply={applyFilters}
       />
 
       <main
         className={cn(
-          "mx-auto grid w-full max-w-[1500px] gap-4 px-4 py-4 lg:px-6 motion-safe:transition-[grid-template-columns] motion-safe:duration-300 motion-safe:ease-out motion-reduce:transition-none",
+          "mx-auto grid w-full max-w-[1500px] gap-4 px-4 py-4 lg:h-[min(62vh,34vw)] lg:min-h-[380px] lg:px-6 motion-safe:transition-[grid-template-columns] motion-safe:duration-180 motion-safe:ease-out motion-reduce:transition-none",
           chatCollapsed
             ? "lg:grid-cols-[minmax(320px,320px)_minmax(420px,1fr)_96px]"
             : "lg:grid-cols-[minmax(320px,320px)_minmax(420px,1fr)_360px]",
@@ -217,16 +307,10 @@ function HomeContent() {
           filters={activeFilters}
           collapsed={chatCollapsed}
           onCollapsedChange={setChatCollapsed}
+          onSelectEvent={setSelectedEvent}
         />
       </main>
 
-      {error && (
-        <div className="mx-auto mb-4 w-full max-w-[1500px] px-4 lg:px-6">
-          <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
-            {error}
-          </p>
-        </div>
-      )}
     </div>
   );
 }

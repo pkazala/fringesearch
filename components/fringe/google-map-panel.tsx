@@ -3,16 +3,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EventDetailCard } from "@/components/fringe/event-detail-card";
+import { getGenreEmoji } from "@/lib/fringe/genre-emoji";
 import type { EventSummary } from "@/lib/fringe/types";
 
 declare global {
   interface Window {
     google?: {
       maps: {
-        Map: new (element: Element, options: Record<string, unknown>) => unknown;
+        Map: new (element: Element, options: Record<string, unknown>) => {
+          addListener?: (eventName: string, callback: () => void) => void;
+          fitBounds?: (bounds: unknown) => void;
+          getZoom?: () => number;
+          setZoom?: (zoom: number) => void;
+        };
         Marker: new (options: Record<string, unknown>) => {
           setMap: (map: unknown) => void;
+          setLabel: (label: unknown) => void;
           addListener: (eventName: string, callback: () => void) => void;
+        };
+        LatLngBounds: new () => {
+          extend: (point: { lat: number; lng: number }) => void;
+        };
+        event?: {
+          addListenerOnce?: (target: unknown, eventName: string, callback: () => void) => void;
         };
       };
     };
@@ -23,6 +36,28 @@ const EDINBURGH_CENTER = {
   lat: 55.9533,
   lng: -3.1883,
 };
+const DEFAULT_MAP_ZOOM = 12;
+const MIN_FIT_ZOOM = 11;
+
+type MarkerLike = {
+  setMap: (map: unknown) => void;
+  setLabel: (label: unknown) => void;
+  addListener: (eventName: string, callback: () => void) => void;
+};
+
+type MarkerEntry = {
+  marker: MarkerLike;
+  emoji: string;
+};
+
+function toMarkerLabel(text: string, large = false) {
+  return {
+    text,
+    color: "#111827",
+    fontSize: large ? "16px" : "11px",
+    fontWeight: "600",
+  };
+}
 
 type GoogleMapPanelProps = {
   events: EventSummary[];
@@ -71,7 +106,7 @@ export function GoogleMapPanel({
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() || null;
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<unknown>(null);
-  const markersRef = useRef<Array<{ setMap: (map: unknown) => void }>>([]);
+  const markersRef = useRef<MarkerEntry[]>([]);
 
   const [apiKey, setApiKey] = useState<string | null>(clientEnvApiKey);
   const [configLoaded, setConfigLoaded] = useState(Boolean(clientEnvApiKey));
@@ -133,7 +168,7 @@ export function GoogleMapPanel({
         if (!mapRef.current) {
           mapRef.current = new window.google.maps.Map(mapContainerRef.current, {
             center: EDINBURGH_CENTER,
-            zoom: 12,
+            zoom: DEFAULT_MAP_ZOOM,
             mapTypeControl: false,
             streetViewControl: false,
             fullscreenControl: false,
@@ -158,25 +193,52 @@ export function GoogleMapPanel({
       return;
     }
 
-    for (const marker of markersRef.current) {
-      marker.setMap(null);
+    for (const markerEntry of markersRef.current) {
+      markerEntry.marker.setMap(null);
     }
     markersRef.current = [];
+
+    const mapInstance = mapRef.current as {
+      fitBounds?: (bounds: unknown) => void;
+      getZoom?: () => number;
+      setZoom?: (zoom: number) => void;
+    };
+    const mapsApi = window.google.maps;
+    const bounds = new mapsApi.LatLngBounds();
+    let hasMarker = false;
 
     for (const event of markerEvents) {
       if (typeof event.lat !== "number" || typeof event.lon !== "number") {
         continue;
       }
 
-      const marker = new window.google.maps.Marker({
+      const emoji = getGenreEmoji(event.genre);
+      const marker = new mapsApi.Marker({
         position: { lat: event.lat, lng: event.lon },
         map: mapRef.current,
         title: event.title,
+        label: toMarkerLabel(emoji, true),
       });
 
       marker.addListener("click", () => onSelectEvent(event));
+      bounds.extend({ lat: event.lat, lng: event.lon });
+      hasMarker = true;
+      markersRef.current.push({
+        marker,
+        emoji,
+      });
+    }
 
-      markersRef.current.push(marker);
+    if (hasMarker && mapInstance.fitBounds) {
+      mapInstance.fitBounds(bounds);
+      if (mapsApi.event?.addListenerOnce) {
+        mapsApi.event.addListenerOnce(mapRef.current, "idle", () => {
+          const nextZoom = mapInstance.getZoom?.();
+          if (typeof nextZoom === "number" && nextZoom < MIN_FIT_ZOOM && mapInstance.setZoom) {
+            mapInstance.setZoom(MIN_FIT_ZOOM);
+          }
+        });
+      }
     }
   }, [markerEvents, onSelectEvent]);
 
@@ -189,17 +251,17 @@ export function GoogleMapPanel({
       : null;
 
   return (
-    <section className="relative min-h-[420px] overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-100">
+    <section className="relative h-full min-h-0 overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-100">
       {mapError ? (
-        <div className="flex h-full min-h-[420px] items-center justify-center p-4 text-center text-sm text-zinc-600">
+        <div className="flex h-full items-center justify-center p-4 text-center text-sm text-zinc-600">
           {mapError}
         </div>
       ) : !configLoaded ? (
-        <div className="flex h-full min-h-[420px] items-center justify-center p-4 text-center text-sm text-zinc-600">
+        <div className="flex h-full items-center justify-center p-4 text-center text-sm text-zinc-600">
           Loading map...
         </div>
       ) : (
-        <div ref={mapContainerRef} className="h-full min-h-[420px] w-full" />
+        <div ref={mapContainerRef} className="h-full w-full" />
       )}
 
       {selectedEvent && (

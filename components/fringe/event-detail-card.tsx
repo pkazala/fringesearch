@@ -1,5 +1,6 @@
 "use client";
 
+import { getGenreEmoji } from "@/lib/fringe/genre-emoji";
 import type { EventSummary } from "@/lib/fringe/types";
 
 type EventDetailCardProps = {
@@ -27,11 +28,18 @@ function formatDate(value: string | null) {
 }
 
 export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
+  const genreEmoji = getGenreEmoji(event.genre);
+
   return (
     <aside className="absolute bottom-4 left-4 right-4 z-30 rounded-2xl border border-zinc-200 bg-white/95 p-4 shadow-xl backdrop-blur sm:left-auto sm:max-w-md">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold text-zinc-900">{event.title}</h3>
+          <h3 className="text-base font-semibold text-zinc-900">
+            <span className="mr-1.5" aria-hidden="true">
+              {genreEmoji}
+            </span>
+            {event.title}
+          </h3>
           <p className="text-xs text-zinc-600">
             {event.genre} · {event.venueName}
           </p>

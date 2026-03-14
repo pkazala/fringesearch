@@ -12,6 +12,8 @@ type DatePickerProps = {
   value: string;
   onChange: (next: string) => void;
   placeholder: string;
+  minDate?: string;
+  maxDate?: string;
   className?: string;
 };
 
@@ -35,10 +37,19 @@ function toDateInputValue(value: Date | undefined) {
   return `${year}-${month}-${day}`;
 }
 
-export function DatePicker({ value, onChange, placeholder, className }: DatePickerProps) {
+export function DatePicker({
+  value,
+  onChange,
+  placeholder,
+  minDate,
+  maxDate,
+  className,
+}: DatePickerProps) {
   const [open, setOpen] = useState(false);
 
   const selectedDate = useMemo(() => parseDate(value), [value]);
+  const minDateValue = useMemo(() => parseDate(minDate ?? ""), [minDate]);
+  const maxDateValue = useMemo(() => parseDate(maxDate ?? ""), [maxDate]);
   const label = selectedDate
     ? selectedDate.toLocaleDateString("en-GB", {
         day: "2-digit",
@@ -66,6 +77,14 @@ export function DatePicker({ value, onChange, placeholder, className }: DatePick
         <Calendar
           mode="single"
           selected={selectedDate}
+          startMonth={minDateValue}
+          endMonth={maxDateValue}
+          disabled={(date) =>
+            Boolean(
+              (minDateValue && date < minDateValue) ||
+                (maxDateValue && date > maxDateValue),
+            )
+          }
           onSelect={(next) => {
             onChange(toDateInputValue(next));
             setOpen(false);

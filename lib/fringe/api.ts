@@ -1,28 +1,26 @@
+import { createHmac } from "node:crypto";
+
 import type { EventSearchFilters, FringeApiEvent } from "@/lib/fringe/types";
 
 const EDINBURGH_API_BASE = "https://api.edinburghfestivalcity.com";
-const FRINGE_API_KEY = process.env.FRINGE_API_KEY;
-const FRINGE_API_SECRET_KEY = process.env.FRINGE_API_SECRET_KEY;
+const FESTIVAL_ID = "demofringe";
+const FRINGE_API_KEY = process.env.FRINGE_API_KEY?.trim();
+const FRINGE_API_SECRET_KEY = process.env.FRINGE_API_SECRET_KEY?.trim();
 
-function buildAuthHeaders() {
-  const headers = new Headers();
-
-  if (FRINGE_API_KEY) {
-    headers.set("x-api-key", FRINGE_API_KEY);
+function buildSignedUrl(path: string, params: URLSearchParams) {
+  if (!FRINGE_API_KEY || !FRINGE_API_SECRET_KEY) {
+    throw new Error("Missing FRINGE_API_KEY or FRINGE_API_SECRET_KEY in environment");
   }
 
-  if (FRINGE_API_SECRET_KEY) {
-    headers.set("x-api-secret-key", FRINGE_API_SECRET_KEY);
-  }
+  const signedParams = new URLSearchParams(params);
+  signedParams.set("key", FRINGE_API_KEY);
 
-  if (FRINGE_API_KEY && FRINGE_API_SECRET_KEY) {
-    const basicToken = Buffer.from(
-      `${FRINGE_API_KEY}:${FRINGE_API_SECRET_KEY}`,
-    ).toString("base64");
-    headers.set("Authorization", `Basic ${basicToken}`);
-  }
+  const unsignedPath = `${path}?${signedParams.toString()}`;
+  const signature = createHmac("sha1", FRINGE_API_SECRET_KEY)
+    .update(unsignedPath)
+    .digest("hex");
 
-  return headers;
+  return `${EDINBURGH_API_BASE}${unsignedPath}&signature=${signature}`;
 }
 
 function parseEventListResponse(payload: unknown): FringeApiEvent[] {
@@ -38,6 +36,7 @@ function parseEventListResponse(payload: unknown): FringeApiEvent[] {
     events?: unknown;
     results?: unknown;
     items?: unknown;
+    data?: unknown;
   };
 
   if (Array.isArray(candidate.events)) {
@@ -52,13 +51,17 @@ function parseEventListResponse(payload: unknown): FringeApiEvent[] {
     return candidate.items as FringeApiEvent[];
   }
 
+  if (Array.isArray(candidate.data)) {
+    return candidate.data as FringeApiEvent[];
+  }
+
   return [];
 }
 
 function buildEventsQuery(filters: EventSearchFilters) {
   const params = new URLSearchParams();
 
-  params.set("festival", "fringe");
+  params.set("festival", FESTIVAL_ID);
   params.set("year", "2025");
   params.set("size", String(Math.min(filters.size ?? 100, 100)));
   params.set("from", String(Math.max(filters.from ?? 0, 0)));
@@ -76,8 +79,13 @@ function buildEventsQuery(filters: EventSearchFilters) {
     params.set("date_to", filters.dateTo);
   }
 
-  if (filters.genre) {
-    params.set("genre", filters.genre);
+  if (Array.isArray(filters.genres)) {
+    for (const genre of filters.genres) {
+      const nextGenre = genre.trim();
+      if (nextGenre) {
+        params.append("genre", nextGenre);
+      }
+    }
   }
 
   if (typeof filters.priceTo === "number") {
@@ -117,15 +125,15 @@ function buildEventsQuery(filters: EventSearchFilters) {
 
 export async function fetchFringeEvents(filters: EventSearchFilters) {
   const params = buildEventsQuery(filters);
-  const url = `${EDINBURGH_API_BASE}/events?${params.toString()}`;
+  const url = buildSignedUrl("/events", params);
 
   const response = await fetch(url, {
-    headers: buildAuthHeaders(),
     next: { revalidate: 600 },
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch events (${response.status})`);
+    const details = (await response.text()).slice(0, 240);
+    throw new Error(`Failed to fetch events (${response.status}) ${details}`);
   }
 
   const json = (await response.json()) as unknown;
@@ -134,15 +142,15 @@ export async function fetchFringeEvents(filters: EventSearchFilters) {
 
 export async function fetchFringeEventById(eventId: string) {
   const safeEventId = eventId.replace(/\//g, "");
+  const encodedEventId = encodeURIComponent(safeEventId);
   const params = new URLSearchParams({
-    festival: "fringe",
+    festival: FESTIVAL_ID,
     year: "2025",
   });
 
-  const url = `${EDINBURGH_API_BASE}/events/${encodeURIComponent(safeEventId)}?${params.toString()}`;
+  const url = buildSignedUrl(`/events/${encodedEventId}`, params);
 
   const response = await fetch(url, {
-    headers: buildAuthHeaders(),
     next: { revalidate: 600 },
   });
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { getGenreEmoji } from "@/lib/fringe/genre-emoji";
 import type { EventSummary } from "@/lib/fringe/types";
 
 type EventListProps = {
@@ -16,7 +17,7 @@ export function EventList({
   onSelect,
 }: EventListProps) {
   return (
-    <section className="flex min-h-[300px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white">
       <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
         <h2 className="text-sm font-semibold text-zinc-900">Suggested events</h2>
         <span className="text-xs text-zinc-500">{events.length} matches</span>
@@ -31,12 +32,13 @@ export function EventList({
 
         {!loading && events.length === 0 && (
           <p className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
-            No events found. Try widening dates or removing one filter.
+            No results found. Try widening dates or removing one filter.
           </p>
         )}
 
         {events.map((event) => {
           const selected = selectedEventId === event.id;
+          const genreEmoji = getGenreEmoji(event.genre);
 
           return (
             <button
@@ -51,7 +53,12 @@ export function EventList({
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-zinc-900">{event.title}</p>
+                  <p className="text-sm font-semibold text-zinc-900">
+                    <span className="mr-1.5" aria-hidden="true">
+                      {genreEmoji}
+                    </span>
+                    {event.title}
+                  </p>
                   <p className="text-xs text-zinc-600">
                     {event.genre} · {event.venueName}
                   </p>
