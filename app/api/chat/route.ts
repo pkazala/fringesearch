@@ -8,6 +8,8 @@ import {
   type UIMessage,
 } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 export const maxDuration = 30;
 
@@ -177,6 +179,69 @@ function buildAgentSystemPrompt(context: ChatContext) {
   ].join("\n");
 }
 
+const LOCAL_ENV_FILES_IN_PRIORITY = [
+  ".env.development.local",
+  ".env.local",
+  ".env.development",
+  ".env",
+] as const;
+
+function parseEnvValue(value: string) {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function readLocalEnvKey(key: string) {
+  for (const fileName of LOCAL_ENV_FILES_IN_PRIORITY) {
+    const absolutePath = join(process.cwd(), fileName);
+    if (!existsSync(absolutePath)) {
+      continue;
+    }
+
+    const fileContent = readFileSync(absolutePath, "utf8");
+    const lines = fileContent.split(/\r?\n/);
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) {
+        continue;
+      }
+
+      const normalizedLine = line.startsWith("export ") ? line.slice(7).trim() : line;
+      const separatorIndex = normalizedLine.indexOf("=");
+      if (separatorIndex <= 0) {
+        continue;
+      }
+
+      const parsedKey = normalizedLine.slice(0, separatorIndex).trim();
+      if (parsedKey !== key) {
+        continue;
+      }
+
+      const rawValue = normalizedLine.slice(separatorIndex + 1);
+      const parsedValue = parseEnvValue(rawValue);
+      if (parsedValue) {
+        return parsedValue;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function resolveOpenAiApiKey() {
+  const localEnvKey = readLocalEnvKey("OPENAI_API_KEY");
+  if (localEnvKey) {
+    return localEnvKey;
+  }
+  return process.env.OPENAI_API_KEY?.trim();
+}
+
 export async function POST(req: Request) {
   const body = (await req.json()) as {
     messages?: UIMessage[];
@@ -187,7 +252,7 @@ export async function POST(req: Request) {
   const context = body.context ?? {};
   const contextEvents = context.events ?? [];
   const eventsById = new Map(contextEvents.map((event) => [event.id, event]));
-  const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
+  const openAiApiKey = resolveOpenAiApiKey();
 
   if (!openAiApiKey) {
     const fallbackReply =
